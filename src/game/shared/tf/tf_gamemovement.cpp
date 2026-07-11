@@ -31,6 +31,15 @@
 
 	#define CTeam C_Team
 
+#ifdef CLIENT_DLL
+static float g_flLastGSPopTime = -1000.0f;
+
+float TF_GetLastGSPopTime()
+{
+	return g_flLastGSPopTime;
+}
+#endif
+
 #else
 	#include "tf_player.h"
 	#include "team.h"
@@ -3374,6 +3383,13 @@ void CTFGameMovement::OnDuck(int nButtonsPressed)
 
 		SetGroundEntity(NULL);
 
+#ifdef CLIENT_DLL
+		if (m_pTFPlayer && m_pTFPlayer->IsLocalPlayer())
+		{
+			g_flLastGSPopTime = gpGlobals->curtime;
+		}
+#endif
+
 		int idx_gs = player->entindex();
 		if (idx_gs >= 0 && idx_gs < TF_MOVEMENT_MAX_PLAYERS)
 		{
@@ -3552,6 +3568,13 @@ void CTFGameMovement::Duck(void)
 				origin.z += 40.0f;
 				mv->SetAbsOrigin(origin);
 				SetGroundEntity(NULL);
+
+#ifdef CLIENT_DLL
+				if (m_pTFPlayer && m_pTFPlayer->IsLocalPlayer())
+				{
+					g_flLastGSPopTime = gpGlobals->curtime;
+				}
+#endif
 
 				int idx_gs2 = player->entindex();
 				if (idx_gs2 >= 0 && idx_gs2 < TF_MOVEMENT_MAX_PLAYERS)

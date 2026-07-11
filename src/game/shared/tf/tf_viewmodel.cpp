@@ -1,4 +1,4 @@
-//========= Copyright Valve Corporation, All rights reserved. ============//
+	//========= Copyright Valve Corporation, All rights reserved. ============//
 //
 // Purpose:
 //
@@ -11,6 +11,9 @@
 
 #ifdef CLIENT_DLL
 #include "c_tf_player.h"
+
+// Forward declaration — defined in tf_gamemovement.cpp
+float TF_GetLastGSPopTime();
 
 // for spy material proxy
 #include "tf_proxyentity.h"
@@ -221,11 +224,72 @@ void CTFViewModel::CalcViewModelView( CBasePlayer *owner, const Vector& eyePosit
 		}
 	}
 
-	BaseClass::CalcViewModelView( owner, vecNewOrigin, vecNewAngles );
+	// --- CS:GO-style viewmodel sway (mouse-look lag) ---
+	{
+		static QAngle s_vecLastAngles(0, 0, 0);
+		static Vector s_vecLagOffset(0, 0, 0);
+		static QAngle s_vecLagAngle(0, 0, 0);
+
+		// How much we turned since last frame
+		QAngle vecAngleDelta;
+		for (int i = 0; i < 3; i++)
+		{
+			float flDiff = AngleDiff(eyeAngles[i], s_vecLastAngles[i]);
+			vecAngleDelta[i] = flDiff;
+		}
+		s_vecLastAngles = eyeAngles;
+
+		// Tunable feel parameters
+		const float flSwayScale = 0.03f;   // how strongly the delta pushes the lag
+		const float flSwayReturnSpeed = 8.0f; // how fast it settles back to center
+		const float flMaxSwayAngle = 4.0f;    // clamp so it doesn't get silly at fast turns
+
+		// Push lag away from the turn direction, then spring it back toward zero
+		s_vecLagAngle.y -= vecAngleDelta.y * flSwayScale * 10.0f;
+		s_vecLagAngle.x -= vecAngleDelta.x * flSwayScale * 10.0f;
+
+		s_vecLagAngle.y = Clamp(s_vecLagAngle.y, -flMaxSwayAngle, flMaxSwayAngle);
+		s_vecLagAngle.x = Clamp(s_vecLagAngle.x, -flMaxSwayAngle, flMaxSwayAngle);
+
+		s_vecLagAngle.y = Approach(0.0f, s_vecLagAngle.y, flSwayReturnSpeed * gpGlobals->frametime * fabs(s_vecLagAngle.y) + 0.01f);
+		s_vecLagAngle.x = Approach(0.0f, s_vecLagAngle.x, flSwayReturnSpeed * gpGlobals->frametime * fabs(s_vecLagAngle.x) + 0.01f);
+
+		vecNewAngles.y += s_vecLagAngle.y;
+		vecNewAngles.x += s_vecLagAngle.x;
+
+		// Small positional sway to match (subtle, position lags slightly too)
+		Vector vecForward, vecRight, vecUp;
+		AngleVectors(eyeAngles, &vecForward, &vecRight, &vecUp);
+		vecNewOrigin += vecRight * (s_vecLagAngle.y * 0.03f);
+		vecNewOrigin += vecUp * (-s_vecLagAngle.x * 0.03f);
+	}
+
+	// --- GS (ground strafe) pop bob: subtle downward dip + recover ---
+	{
+		float flTimeSincePop = gpGlobals->curtime - TF_GetLastGSPopTime();
+		const float flBobDuration = 0.35f; // how long the whole dip+recover takes
+
+		if (flTimeSincePop >= 0.0f && flTimeSincePop < flBobDuration)
+		{
+			float flProgress = flTimeSincePop / flBobDuration; // 0 to 1
+
+			// Sine-based dip: goes down then back up, peak drop around 1/3 through
+			float flDropAmount = sinf(flProgress * M_PI) * (1.0f - flProgress * 0.3f);
+
+			const float flMaxDrop = 2.0f; // how far down the viewmodel dips, subtle but visible
+
+			Vector vecForward, vecRight, vecUp;
+			AngleVectors(eyeAngles, &vecForward, &vecRight, &vecUp);
+
+			vecNewOrigin -= vecUp * (flDropAmount * flMaxDrop);
+		}
+	}
+
+	BaseClass::CalcViewModelView(owner, vecNewOrigin, vecNewAngles);
 
 #endif // CLIENT_DLL
 }
-
+	
 #ifdef CLIENT_DLL
 //-----------------------------------------------------------------------------
 // Purpose: Don't render the weapon if its supposed to be lowered and we have 
