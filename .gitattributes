@@ -1,6 +1,5 @@
 buildallprojects text
 vpc binary
-
 *.sh text
 *.bat text
 *.txt text
@@ -31,15 +30,16 @@ vpc binary
 *.vmt text
 *.inl text
 *.asm text
-
 .gitignore text
 README.md text
 CONTRIBUTING text
 LICENSE text
-
-*.exe binary
+*.exe filter=lfs diff=lfs merge=lfs -text
 *.dll binary
 protoc binary
 ccache binary
-
 *_english.txt binary
+*.bsp filter=lfs diff=lfs merge=lfs -text
+*.ain filter=lfs diff=lfs merge=lfs -text
+*.lib filter=lfs diff=lfs merge=lfs -text
+*.a filter=lfs diff=lfs merge=lfs -text
