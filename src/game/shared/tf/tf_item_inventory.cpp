@@ -679,10 +679,10 @@ CEconItemView *CTFInventoryManager::GetBaseItemForClass( int iClass, int iSlot )
 			stockActionItemDefIndices.AddToTail( pItemDef_SpellBook->GetDefinitionIndex() );
 		}
 
-		static CSchemaItemDefHandle pItemDef_GrapplingHook( "TF_WEAPON_GRAPPLINGHOOK" );
-		if ( TFGameRules() && TFGameRules()->IsUsingGrapplingHook() && pItemDef_GrapplingHook )
+		static CSchemaItemDefHandle pItemDef_GrapplingHook("TF_WEAPON_GRAPPLINGHOOK");
+		if (((TFGameRules() && TFGameRules()->IsUsingGrapplingHook()) || iClass == TF_CLASS_SPY) && pItemDef_GrapplingHook)
 		{
-			stockActionItemDefIndices.AddToTail( pItemDef_GrapplingHook->GetDefinitionIndex() );
+			stockActionItemDefIndices.AddToTail(pItemDef_GrapplingHook->GetDefinitionIndex());
 		}
 
 		static CSchemaItemDefHandle pItemDef_MvMCanteen( "Default Power Up Canteen (MvM)" );
@@ -909,27 +909,23 @@ void CTFPlayerInventory::UpdateRealTFLoadoutItems()
 
 void CTFPlayerInventory::LoadLocalLoadout()
 {
-	if (GetOwner() != steamapicontext->SteamUser()->GetSteamID())
-		return;
+	return; 
+	
 
-	if (!g_pFullFileSystem) {
-		return;
-	}
-
-	KeyValues *pLoadoutKV = new KeyValues("local_loadout");
+	KeyValues* pLoadoutKV = new KeyValues("local_loadout");
 	if (!pLoadoutKV->LoadFromFile(g_pFullFileSystem, LOCAL_LOADOUT_FILE, "MOD"))
 	{
-		SaveLocalLoadout( true, true );
+		SaveLocalLoadout(true, true);
 
-		if ( !pLoadoutKV->LoadFromFile( g_pFullFileSystem, LOCAL_LOADOUT_FILE, "MOD" ) )
+		if (!pLoadoutKV->LoadFromFile(g_pFullFileSystem, LOCAL_LOADOUT_FILE, "MOD"))
 		{
-			Warning( "Unable to parse local_loadout.txt into keyvalues.\n" );
+			Warning("Unable to parse local_loadout.txt into keyvalues.\n");
 			return;
 		}
 	}
 
-	KeyValues *pActivePresetKV = pLoadoutKV->FindKey("active_preset");
-	if (pActivePresetKV) 
+	KeyValues* pActivePresetKV = pLoadoutKV->FindKey("active_preset");
+	if (pActivePresetKV)
 	{
 		for (int iClass = 1; iClass < TF_CLASS_COUNT_ALL; ++iClass)
 		{
@@ -950,7 +946,7 @@ void CTFPlayerInventory::LoadLocalLoadout()
 
 		FOR_EACH_TRUE_SUBKEY(pPresetKV, pClassKey)
 		{
-			const char *pszClassName = pClassKey->GetName();
+			const char* pszClassName = pClassKey->GetName();
 			const int iClass = GetClassIndexFromString(pszClassName, TF_CLASS_COUNT_ALL);
 
 			FOR_EACH_SUBKEY(pClassKey, pLoadoutEntry)
@@ -963,7 +959,7 @@ void CTFPlayerInventory::LoadLocalLoadout()
 				if (iPreset == m_ActivePreset[iClass]) {
 					m_LoadoutItems[iClass][iSlot] = uItemId;
 
-					CEconItemView *pItem = GetInventoryItemByItemID(uItemId);
+					CEconItemView* pItem = GetInventoryItemByItemID(uItemId);
 					if (pItem) {
 						pItem->GetSOCData()->Equip(iClass, iSlot);
 					}
@@ -971,6 +967,10 @@ void CTFPlayerInventory::LoadLocalLoadout()
 			}
 		}
 	}
+
+
+
+	
 
 	pLoadoutKV->deleteThis();
 

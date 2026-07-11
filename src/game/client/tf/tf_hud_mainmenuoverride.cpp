@@ -813,13 +813,14 @@ void CHudMainMenuOverride::LoadMenuEntries( void )
 		}
 
 		// Create the new editable panel (first, see if we have one already)
-		vgui::EditablePanel *pPanel = dynamic_cast<vgui::EditablePanel *>( FindChildByName( name, true ) );
-		if ( !pPanel )
+		vgui::EditablePanel* pPanel = dynamic_cast<vgui::EditablePanel*>(FindChildByName(name, true));
+		if (!pPanel)
 		{
-			Assert( false );	// We don't want to do this anymore.  We need an actual hierarchy so things can slide
-								// around when the play buttin is pressed and the play options expand
-			pPanel = new vgui::EditablePanel( this, name );
+			Msg("[MAINMENU DEBUG] Could not find panel for menu entry: '%s'\n", name);
+			Assert(false);
+			pPanel = new vgui::EditablePanel(this, name);
 		}
+
 		else
 		{
 			// It already exists in our .res file. Note that it's a custom button.

@@ -158,7 +158,7 @@
 // Halloween 2013 VO defines for plr_hightower_event
 #define HELLTOWER_TIMER_INTERVAL	( 60 + RandomInt( -30, 30 )	)
 #define HELLTOWER_RARE_LINE_CHANCE	0.15	// 15%
-#define HELLTOWER_MISC_CHANCE		0.50	// 50%
+#define HELLTOWER_MISC_CHANCE		0.50	// 50%#define MAX_GRACE_PLAYERS 34  // matches max TF2 players + buffer
 
 static int g_TauntCamRagdollAchievements[] = 
 {

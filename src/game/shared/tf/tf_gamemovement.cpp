@@ -40,6 +40,9 @@
 
 
 ConVar	tf_duck_debug_spew( "tf_duck_debug_spew", "0", FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY );
+ConVar	sv_edgebug_detect("sv_edgebug_detect", "1", FCVAR_REPLICATED, "Enable edgebug detection and chat notification");
+ConVar	sv_edgebug_max_ground_ticks("sv_edgebug_max_ground_ticks", "1", FCVAR_REPLICATED, "Max ticks grounded before a jump no longer counts as an edgebug");
+ConVar  sv_edgebug_min_fall_speed("sv_edgebug_min_fall_speed", "100", FCVAR_REPLICATED, "Minimum downward speed (u/s) at landing to be considered an edgebug candidate");
 ConVar	tf_showspeed( "tf_showspeed", "0", FCVAR_REPLICATED | FCVAR_DEVELOPMENTONLY );
 ConVar	tf_avoidteammates( "tf_avoidteammates", "1", FCVAR_REPLICATED | FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY, "Controls how teammates interact when colliding.\n  0: Teammates block each other\n  1: Teammates pass through each other, but push each other away (default)" );
 ConVar	tf_avoidteammates_pushaway( "tf_avoidteammates_pushaway", "1", FCVAR_REPLICATED, "Whether or not teammates push each other away when occupying the same space" );
@@ -91,7 +94,23 @@ extern ConVar mp_tournament_readymode_countdown;
 //ConVar	tf_waterjump_up( "tf_waterjump_up", "300", FCVAR_REPLICATED | FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
 //ConVar	tf_waterjump_forward( "tf_waterjump_forward", "30", FCVAR_REPLICATED | FCVAR_CHEAT | FCVAR_DEVELOPMENTONLY );
 
-#define	NUM_CROUCH_HINTS	3
+#define	NUM_CROUCH_HINTS	999
+#define TF_MOVEMENT_MAX_PLAYERS 34
+static Vector g_vecLandingVelocity[TF_MOVEMENT_MAX_PLAYERS];
+static float  g_flLandingGraceEndTime[TF_MOVEMENT_MAX_PLAYERS];
+
+#define TF_EDGEBUG_MAX_PLAYERS 34
+static int   g_iGroundedTicks[TF_EDGEBUG_MAX_PLAYERS];
+static float g_flLandingVelZ[TF_EDGEBUG_MAX_PLAYERS];
+static bool  g_bEdgebugReported[TF_EDGEBUG_MAX_PLAYERS];
+
+//gstrafe bullshit
+static float g_flGroundStrafeAirUntil[TF_MOVEMENT_MAX_PLAYERS];
+
+static bool  g_bDuckCommitted[TF_MOVEMENT_MAX_PLAYERS];
+static float g_flDuckCommitEndTime[TF_MOVEMENT_MAX_PLAYERS];
+
+static float g_flGSNoClampUntil[TF_MOVEMENT_MAX_PLAYERS];
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -173,6 +192,9 @@ static CTFGameMovement g_GameMovement;
 IGameMovement *g_pGameMovement = ( IGameMovement * )&g_GameMovement;
 
 EXPOSE_SINGLE_INTERFACE_GLOBALVAR(CGameMovement, IGameMovement,INTERFACENAME_GAMEMOVEMENT, g_GameMovement );
+
+#define TF_FAST_TIME_TO_DUCK    0.1f   // default is usually ~0.2-0.4f depending on branch
+#define TF_FAST_TIME_TO_UNDUCK  0.1f
 
 
 // ---------------------------------------------------------------------------------------- //
@@ -1160,7 +1182,7 @@ void CTFGameMovement::ToggleParachute()
 bool CTFGameMovement::CheckJumpButton()
 {
 	// Are we dead?  Then we cannot jump.
-	if ( player->pl.deadflag )
+	if (player->pl.deadflag)
 		return false;
 
 	// Check to see if we are in water.
@@ -1216,20 +1238,10 @@ bool CTFGameMovement::CheckJumpButton()
 	bool bOnGround = ( player->GetGroundEntity() != NULL );
 
 	ToggleParachute();
-
-	// Cannot jump will ducked.
-	if ( player->GetFlags() & FL_DUCKING )
-	{
-		// Let a scout do it.
-		bool bAllow = ( bScout && !bOnGround );
-
-		if ( !bAllow )
-			return false;
-	}
-
+	
 	// Cannot jump while in the unduck transition.
-	if ( ( player->m_Local.m_bDucking && (  player->GetFlags() & FL_DUCKING ) ) || ( player->m_Local.m_flDuckJumpTime > 0.0f ) )
-		return false;
+	//if ( ( player->m_Local.m_bDucking && (  player->GetFlags() & FL_DUCKING ) ) || ( player->m_Local.m_flDuckJumpTime > 0.0f ) )
+		//return false;
 
 	// Cannot jump again until the jump button has been released.
 	if ( mv->m_nOldButtons & IN_JUMP )
@@ -1259,7 +1271,28 @@ bool CTFGameMovement::CheckJumpButton()
 		return true;
 	}
 
-	PreventBunnyJumping();
+	// Bhop leniency: if we landed recently, restore pre-friction speed magnitude
+		// (keeps current direction so we don't snap to an old facing angle)
+	{
+		int idx = player->entindex();
+		if (idx >= 0 && idx < TF_MOVEMENT_MAX_PLAYERS && g_flLandingGraceEndTime[idx] > gpGlobals->curtime)
+		{
+			float flStoredSpeed = g_vecLandingVelocity[idx].Length2D();
+			float flCurrentSpeed = mv->m_vecVelocity.Length2D();
+
+			if (flStoredSpeed > flCurrentSpeed)
+			{
+				Vector vecDir = mv->m_vecVelocity;
+				vecDir.z = 0.0f;
+				if (vecDir.LengthSqr() > 1.0f)
+				{
+					VectorNormalize(vecDir);
+					mv->m_vecVelocity.x = vecDir.x * flStoredSpeed;
+					mv->m_vecVelocity.y = vecDir.y * flStoredSpeed;
+				}
+			}
+		}
+	}	PreventBunnyJumping();
 
 	// Start jump animation and player sound (specific TF animation and flags).
 	m_pTFPlayer->DoAnimationEvent( PLAYERANIMEVENT_JUMP );
@@ -1343,8 +1376,31 @@ bool CTFGameMovement::CheckJumpButton()
 
 	// Flag that we jumped and don't jump again until it is released.
 	mv->m_nOldButtons |= IN_JUMP;
+
+#ifdef GAME_DLL
+	if (sv_edgebug_detect.GetBool())
+	{
+		int idx = player->entindex();
+		if (idx >= 0 && idx < TF_EDGEBUG_MAX_PLAYERS && !g_bEdgebugReported[idx])
+		{
+			bool bBriefContact = g_iGroundedTicks[idx] <= sv_edgebug_max_ground_ticks.GetInt();
+			bool bWasFallingFast = g_flLandingVelZ[idx] <= -sv_edgebug_min_fall_speed.GetFloat();
+
+			if (bBriefContact && bWasFallingFast)
+			{
+				g_bEdgebugReported[idx] = true;
+
+				char buf[64];
+				V_snprintf(buf, sizeof(buf), "Edgebug detected! (%.0f u/s)\n", -g_flLandingVelZ[idx]);
+				ClientPrint(m_pTFPlayer, HUD_PRINTTALK, buf);
+			}
+		}
+	}
+#endif
+
 	return true;
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -1805,11 +1861,14 @@ void CTFGameMovement::WalkMove( void )
 		mv->m_flMaxSpeed *= ( 1.f - m_pTFPlayer->m_Shared.GetAmountStunned( TF_STUN_MOVEMENT ) ) : 
 		*/ mv->m_flMaxSpeed;
 
-	// Clamp the players speed in x,y.
-	float flNewSpeed = VectorLength( mv->m_vecVelocity );
-	if ( flNewSpeed > flAdjustedMaxSpeed )
+		// Clamp the players speed in x,y — skipped during GS no-clamp window.
+	int idx_gswm = player->entindex();
+	bool bGSNoClampWM = (idx_gswm >= 0 && idx_gswm < TF_MOVEMENT_MAX_PLAYERS && g_flGSNoClampUntil[idx_gswm] > gpGlobals->curtime);
+
+	float flNewSpeed = VectorLength(mv->m_vecVelocity);
+	if (!bGSNoClampWM && flNewSpeed > flAdjustedMaxSpeed)
 	{
-		float flScale = ( flAdjustedMaxSpeed / flNewSpeed );
+		float flScale = (flAdjustedMaxSpeed / flNewSpeed);
 		mv->m_vecVelocity.x *= flScale;
 		mv->m_vecVelocity.y *= flScale;
 	}
@@ -2384,11 +2443,13 @@ void CTFGameMovement::CategorizePosition( void )
 	}
 
 	trace_t trace;
-	TracePlayerBBox( vecStartPos, vecEndPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace );
+	TracePlayerBBox(vecStartPos, vecEndPos, PlayerSolidMask(), COLLISION_GROUP_PLAYER_MOVEMENT, trace);
 
 	bool bInAir = false;
 	float flGroundFrictionMult = 1.f;
 	float flAirFrictionMult = 1.f;
+
+
 	if ( m_pTFPlayer->m_Shared.InCond( TF_COND_AIR_CURRENT ) )
 	{
 		flAirFrictionMult *= tf_movement_aircurrent_friction_mult.GetFloat();
@@ -2453,8 +2514,47 @@ void CTFGameMovement::CategorizePosition( void )
 			}
 		}
 	}
+	
+	//eb detect
+	bool bWasOnGround = (player->GetGroundEntity() != NULL);
 
-	SetGroundEntity( bInAir ? NULL : &trace );
+	SetGroundEntity(bInAir ? NULL : &trace);
+
+	bool bIsOnGround = (player->GetGroundEntity() != NULL);
+
+	{
+		int idx = player->entindex();
+		if (idx >= 0 && idx < TF_EDGEBUG_MAX_PLAYERS)
+		{
+			if (!bWasOnGround && bIsOnGround)
+			{
+				g_flLandingVelZ[idx] = mv->m_vecVelocity.z;
+				g_iGroundedTicks[idx] = 0;
+				g_bEdgebugReported[idx] = false;
+			}
+			else if (bIsOnGround)
+			{
+				g_iGroundedTicks[idx]++;
+			}
+			else
+			{
+				g_iGroundedTicks[idx] = 0;
+			}
+		}
+	}
+
+	// Snapshot velocity the instant we land, before friction has a chance to eat it
+	if (!bWasOnGround && bIsOnGround)
+	{
+		int idx = player->entindex();
+		if (idx >= 0 && idx < TF_MOVEMENT_MAX_PLAYERS)
+		{
+			g_vecLandingVelocity[idx] = mv->m_vecVelocity;
+			g_flLandingGraceEndTime[idx] = gpGlobals->curtime + 0.65f;
+
+		}
+	}
+
 	player->m_surfaceFriction *= bInAir ? flAirFrictionMult : flGroundFrictionMult;
 }
 
@@ -2675,7 +2775,15 @@ void CTFGameMovement::FullWalkMove()
 	if (player->GetGroundEntity() != NULL)
 	{
 		mv->m_vecVelocity[2] = 0.0;
-		Friction();
+
+		int idx_gsf = player->entindex();
+		bool bGSNoClamp = (idx_gsf >= 0 && idx_gsf < TF_MOVEMENT_MAX_PLAYERS && g_flGSNoClampUntil[idx_gsf] > gpGlobals->curtime);
+
+		if (!bGSNoClamp)
+		{
+			Friction();
+		}
+
 		WalkMove();
 	}
 	else
@@ -3172,26 +3280,27 @@ void CTFGameMovement::TestDuck(  )
 }
 #endif
 
-
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
 void CTFGameMovement::DuckOverrides()
 {
-	bool bOnGround = ( player->GetGroundEntity() != NULL );
+	bool bOnGround = (player->GetGroundEntity() != NULL);
 
 	// Don't allowing ducking in water.
-	if ( ( ( player->GetWaterLevel() >= WL_Feet ) && !bOnGround ) ||
-		player->GetWaterLevel() >= WL_Eyes )
+	if (((player->GetWaterLevel() >= WL_Feet) && !bOnGround) ||
+		player->GetWaterLevel() >= WL_Eyes)
 	{
 		mv->m_nButtons &= ~IN_DUCK;
 	}
 
-	if ( !tf_clamp_airducks.GetBool() )
+	if (!tf_clamp_airducks.GetBool())
 		return;
 
-	// Check the duck timer and disable the duck button.
-	if ( gpGlobals->curtime < m_pTFPlayer->m_Shared.GetDuckTimer() && bOnGround )
+	// Check the duck timer and disable the duck button — except when moving fast
+		// enough to be attempting ground-strafe, which requires rapid re-duck taps.
+	bool bGroundStrafeAttempt = mv->m_vecVelocity.Length2D() > 50.0f;
+	if (gpGlobals->curtime < m_pTFPlayer->m_Shared.GetDuckTimer() && bOnGround && !bGroundStrafeAttempt)
 	{
 		mv->m_nButtons &= ~IN_DUCK;
 	}
@@ -3210,109 +3319,142 @@ void CTFGameMovement::DuckOverrides()
 	// The intent of the duck timer is to require you to stand up after you've started
 	// to unduck and to throttle duck spamming.  This just enforces the unduck
 	// requirement.
-	if ( player->m_Local.m_bDucked && player->m_Local.m_bDucking )
+	if (player->m_Local.m_bDucked && player->m_Local.m_bDucking)
 	{
 		mv->m_nButtons &= ~IN_DUCK;
 	}
 
+	//commed out for inf ducks
 	// Only allow one duck per air event.
-	if ( !bOnGround && m_pTFPlayer->m_Shared.AirDuckedCount() >= TF_AIRDUCKED_COUNT )
-	{
-		mv->m_nButtons &= ~IN_DUCK;
-	}
+	//if (!bOnGround && m_pTFPlayer->m_Shared.AirDuckedCount() >= TF_AIRDUCKED_COUNT)
+	//{
+	//	mv->m_nButtons &= ~IN_DUCK;
+	//}
 }
-
 
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void CTFGameMovement::OnDuck( int nButtonsPressed )
+void CTFGameMovement::OnDuck(int nButtonsPressed)
 {
 	// Check to see if we are in the air or ducking.
-	bool bInAir = ( player->GetGroundEntity() == NULL );
-	bool bInDuck = ( player->GetFlags() & FL_DUCKING ) ? true : false;
+	bool bInAir = (player->GetGroundEntity() == NULL);
+	bool bInDuck = (player->GetFlags() & FL_DUCKING) ? true : false;
 
 	// XBOX SERVER ONLY
 #if !defined(CLIENT_DLL)
-	if ( IsX360() && nButtonsPressed & IN_DUCK )
+	if (IsX360() && nButtonsPressed & IN_DUCK)
 	{
 		// Hinting logic
-		if ( player->GetToggledDuckState() && player->m_nNumCrouches < NUM_CROUCH_HINTS )
+		if (player->GetToggledDuckState() && player->m_nNumCrouches < NUM_CROUCH_HINTS)
 		{
-			UTIL_HudHintText( player, "#Valve_Hint_Crouch" );
+			UTIL_HudHintText(player, "#Valve_Hint_Crouch");
 			player->m_nNumCrouches++;
 		}
 	}
 #endif
 
+	// Ground Strafe (GS) trigger: grounded, and this is a fresh duck press caught
+	// while an earlier duck-in transition is already active but not yet fully committed.
+	// This is the CS1.6-style "re-duck mid-animation" pop.
+	if (!bInAir && (nButtonsPressed & IN_DUCK) && player->m_Local.m_bDucking && !bInDuck)
+	{
+		// Redirect current horizontal speed into the direction we're currently looking.
+		// No baseline/minimum — zero speed stays zero (pure vertical pop-in-place).
+		float flSpeed = mv->m_vecVelocity.Length2D();
+
+		Vector vecForward;
+		AngleVectors(mv->m_vecViewAngles, &vecForward);
+		vecForward.z = 0.0f;
+		VectorNormalize(vecForward);
+
+		mv->m_vecVelocity.x = vecForward.x * flSpeed;
+		mv->m_vecVelocity.y = vecForward.y * flSpeed;
+		mv->m_vecVelocity.z = 140.0f;
+
+		SetGroundEntity(NULL);
+
+		int idx_gs = player->entindex();
+		if (idx_gs >= 0 && idx_gs < TF_MOVEMENT_MAX_PLAYERS)
+		{
+			g_flGSNoClampUntil[idx_gs] = gpGlobals->curtime + 0.5f;
+		}
+
+		player->m_Local.m_bDucking = true;
+		FinishDuck();
+
+		return;
+	}
+
 	// Have the duck button pressed, but the player currently isn't in the duck position.
-	if ( ( nButtonsPressed & IN_DUCK ) && !bInDuck )
+	if ((nButtonsPressed & IN_DUCK) && !bInDuck)
 	{
 		player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 		player->m_Local.m_bDucking = true;
 
-		if ( m_pTFPlayer->m_Shared.GetAirDash() > 0 )
+		if (m_pTFPlayer->m_Shared.GetAirDash() > 0)
 		{
-			m_pTFPlayer->DoAnimationEvent( PLAYERANIMEVENT_DOUBLEJUMP_CROUCH );
+			m_pTFPlayer->DoAnimationEvent(PLAYERANIMEVENT_DOUBLEJUMP_CROUCH);
 		}
 	}
 
-	// The player is in duck transition and not duck-jumping.
-	if ( player->m_Local.m_bDucking )
+	// Airborne: instant duck. Grounded: normal timed transition.
+	if (bInAir)
 	{
-		float flDuckMilliseconds = MAX( 0.0f, GAMEMOVEMENT_DUCK_TIME - ( float )player->m_Local.m_flDucktime );
+		FinishDuck();
+	}
+	else if (player->m_Local.m_bDucking)
+	{
+		float flDuckMilliseconds = MAX(0.0f, GAMEMOVEMENT_DUCK_TIME - (float)player->m_Local.m_flDucktime);
 		float flDuckSeconds = flDuckMilliseconds * 0.001f;
 
-		// Finish in duck transition when transition time is over, in "duck", in air.
-		if ( ( flDuckSeconds > TIME_TO_DUCK ) || bInDuck || bInAir )
+		if ((flDuckSeconds > TIME_TO_DUCK) || bInDuck)
 		{
 			FinishDuck();
 		}
 		else
 		{
-			// Calc parametric time
-			float flDuckFraction = SimpleSpline( flDuckSeconds / TIME_TO_DUCK );
-			SetDuckedEyeOffset( flDuckFraction );
+			float flDuckFraction = SimpleSpline(flDuckSeconds / TIME_TO_DUCK);
+			SetDuckedEyeOffset(flDuckFraction);
 		}
 	}
 }
 
-
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void CTFGameMovement::OnUnDuck( int nButtonsReleased )
+void CTFGameMovement::OnUnDuck(int nButtonsReleased)
 {
 	// Check to see if we are in the air or ducking.
-	bool bInAir = ( player->GetGroundEntity() == NULL );
-	bool bInDuck = ( player->GetFlags() & FL_DUCKING ) ? true : false;
+	bool bInAir = (player->GetGroundEntity() == NULL);
+	bool bInDuck = (player->GetFlags() & FL_DUCKING) ? true : false;
 
 	// Once the duck button is released, start a timer. The player will not be able to engage in a duck
 	// until the timer expires.  In addition, set that we have ducked in air (will be allowed only once
 	// while in air).
-	if ( nButtonsReleased & IN_DUCK )
+	if (nButtonsReleased & IN_DUCK)
 	{
-		m_pTFPlayer->m_Shared.SetDuckTimer( gpGlobals->curtime + TF_TIME_TO_DUCK );
-		if ( bInAir )
+		m_pTFPlayer->m_Shared.SetDuckTimer(gpGlobals->curtime + TF_TIME_TO_DUCK);
+		if (bInAir)
 		{
 			// Increment the number of times we have ducked in air.
 			int nCount = m_pTFPlayer->m_Shared.AirDuckedCount() + 1;
-			m_pTFPlayer->m_Shared.SetAirDucked( nCount );
+			m_pTFPlayer->m_Shared.SetAirDucked(nCount);
 		}
 	}
 
 	// Try to unduck unless automovement is not allowed
 	// NOTE: When not onground, you can always unduck
-	if ( player->m_Local.m_bAllowAutoMovement || bInAir || player->m_Local.m_bDucking )
+	if (player->m_Local.m_bAllowAutoMovement || bInAir || player->m_Local.m_bDucking)
 	{
 		// We released the duck button, we aren't in "duck" and we are not in the air - start unduck transition.
-		if ( ( nButtonsReleased & IN_DUCK ) )
+		if ((nButtonsReleased & IN_DUCK))
 		{
-			if ( bInDuck )
+			if (bInDuck)
 			{
 				player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
 			}
-			else if ( player->m_Local.m_bDucking && !player->m_Local.m_bDucked )
+			else if (player->m_Local.m_bDucking && !player->m_Local.m_bDucked)
 			{
 				// Invert time if release before fully ducked!!!
 				float unduckMilliseconds = 1000.0f * TIME_TO_UNDUCK;
@@ -3327,39 +3469,31 @@ void CTFGameMovement::OnUnDuck( int nButtonsReleased )
 		}
 
 		// Check to see if we are capable of unducking.
-		if ( CanUnduck() )
+		if (CanUnduck())
 		{
-			// or unducking
-			if ( ( player->m_Local.m_bDucking || player->m_Local.m_bDucked ) )
+			if ((player->m_Local.m_bDucking || player->m_Local.m_bDucked))
 			{
-				float flDuckMilliseconds = MAX( 0.0f, GAMEMOVEMENT_DUCK_TIME - (float)player->m_Local.m_flDucktime );
-				float flDuckSeconds = flDuckMilliseconds * 0.001f;
-
-				// Finish ducking immediately if duck time is over or not on ground
-				if ( flDuckSeconds > TIME_TO_UNDUCK || bInAir )
+				// Airborne: instant unduck. Grounded: normal timed transition.
+				if (bInAir)
 				{
 					FinishUnDuck();
 				}
 				else
 				{
-					// Calc parametric time
-					float flDuckFraction = SimpleSpline( 1.0f - ( flDuckSeconds / TIME_TO_UNDUCK ) );
-					SetDuckedEyeOffset( flDuckFraction );
-					player->m_Local.m_bDucking = true;
+					float flDuckMilliseconds = MAX(0.0f, GAMEMOVEMENT_DUCK_TIME - (float)player->m_Local.m_flDucktime);
+					float flDuckSeconds = flDuckMilliseconds * 0.001f;
+
+					if (flDuckSeconds > TIME_TO_UNDUCK)
+					{
+						FinishUnDuck();
+					}
+					else
+					{
+						float flDuckFraction = SimpleSpline(1.0f - (flDuckSeconds / TIME_TO_UNDUCK));
+						SetDuckedEyeOffset(flDuckFraction);
+						player->m_Local.m_bDucking = true;
+					}
 				}
-			}
-		}
-		else
-		{
-			// Still under something where we can't unduck, so make sure we reset this timer so
-			//  that we'll unduck once we exit the tunnel, etc.
-			if ( player->m_Local.m_flDucktime != GAMEMOVEMENT_DUCK_TIME )
-			{
-				SetDuckedEyeOffset(1.0f);
-				player->m_Local.m_flDucktime = GAMEMOVEMENT_DUCK_TIME;
-				player->m_Local.m_bDucked = true;
-				player->m_Local.m_bDucking = false;
-				player->AddFlag( FL_DUCKING );
 			}
 		}
 	}
@@ -3368,17 +3502,17 @@ void CTFGameMovement::OnUnDuck( int nButtonsReleased )
 //-----------------------------------------------------------------------------
 // Purpose: Crop the speed of the player when ducking and on the ground.
 //-----------------------------------------------------------------------------
-void CTFGameMovement::HandleDuckingSpeedCrop( void )
+void CTFGameMovement::HandleDuckingSpeedCrop(void)
 {
 	BaseClass::HandleDuckingSpeedCrop();
 
-	if ( m_iSpeedCropped & SPEED_CROPPED_DUCK )
+	if (m_iSpeedCropped & SPEED_CROPPED_DUCK)
 	{
-		if ( m_pTFPlayer->m_Shared.IsLoser() )
+		if (m_pTFPlayer->m_Shared.IsLoser())
 		{
-			mv->m_flForwardMove	*= 0;
-			mv->m_flSideMove	*= 0;
-			mv->m_flUpMove		*= 0;
+			mv->m_flForwardMove *= 0;
+			mv->m_flSideMove *= 0;
+			mv->m_flUpMove *= 0;
 		}
 	}
 }
@@ -3386,16 +3520,93 @@ void CTFGameMovement::HandleDuckingSpeedCrop( void )
 //-----------------------------------------------------------------------------
 // Purpose: See if duck button is pressed and do the appropriate things
 //-----------------------------------------------------------------------------
-void CTFGameMovement::Duck( void )
+void CTFGameMovement::Duck(void)
 {
+	// Capture real input before any overrides touch it — used to know if the key
+	// was actually released early, for the full-duck-commit logic below.
+	bool bRawDuckHeld = (mv->m_nButtons & IN_DUCK) != 0;
+
 	// Check duck overrides.
 	DuckOverrides();
 
+	// --- GS bind (mousewheel / IN_ATTACK3): separate from Shift-duck entirely ---
+	{
+		bool bAttack3Pressed = (mv->m_nButtons & IN_ATTACK3) && !(mv->m_nOldButtons & IN_ATTACK3);
+
+		if (bAttack3Pressed)
+		{
+			bool bInAirNow = (player->GetGroundEntity() == NULL);
+
+			if (!bInAirNow)
+			{
+				// Grounded: rapid duck + unduck in succession, plus a straight-up 40u pop.
+				player->m_Local.m_bDucking = true;
+				FinishDuck();
+
+				if (CanUnduck())
+				{
+					FinishUnDuck();
+				}
+
+				Vector origin = mv->GetAbsOrigin();
+				origin.z += 40.0f;
+				mv->SetAbsOrigin(origin);
+				SetGroundEntity(NULL);
+
+				int idx_gs2 = player->entindex();
+				if (idx_gs2 >= 0 && idx_gs2 < TF_MOVEMENT_MAX_PLAYERS)
+				{
+					g_flGSNoClampUntil[idx_gs2] = gpGlobals->curtime + 0.5f;
+				}
+			}
+			else
+			{
+				// Airborne: just duck, nothing else.
+				player->m_Local.m_bDucking = true;
+				FinishDuck();
+			}
+		}
+	}
+
+	// --- Full duck commit: any tap must finish the duck animation before uncrouching ---
+	{
+		int idx = player->entindex();
+		if (idx >= 0 && idx < TF_MOVEMENT_MAX_PLAYERS)
+		{
+			bool bCurrentlyDucked = (player->GetFlags() & FL_DUCKING) != 0;
+
+			bool bIsAirborneNow = (player->GetGroundEntity() == NULL);
+
+			if (bRawDuckHeld && !g_bDuckCommitted[idx] && !bCurrentlyDucked && !player->m_Local.m_bDucking)
+			{
+				g_bDuckCommitted[idx] = true;
+				g_flDuckCommitEndTime[idx] = gpGlobals->curtime + (bIsAirborneNow ? 0.0f : TIME_TO_DUCK);
+			}
+
+			if (g_bDuckCommitted[idx])
+			{
+				if (gpGlobals->curtime < g_flDuckCommitEndTime[idx])
+				{
+					mv->m_nButtons |= IN_DUCK;
+				}
+				else
+				{
+					g_bDuckCommitted[idx] = false;
+
+					if (!bRawDuckHeld)
+					{
+						mv->m_nButtons &= ~IN_DUCK;
+					}
+				}
+			}
+		}
+	}
+
 	// Calculate the button state.
-	int buttonsChanged	= ( mv->m_nOldButtons ^ mv->m_nButtons );	// These buttons have changed this frame
-	int buttonsPressed	=  buttonsChanged & mv->m_nButtons;			// The changed ones still down are "pressed"
-	int buttonsReleased	=  buttonsChanged & mv->m_nOldButtons;		// The changed ones which were previously down are "released"
-	if ( mv->m_nButtons & IN_DUCK )
+	int buttonsChanged = (mv->m_nOldButtons ^ mv->m_nButtons);	// These buttons have changed this frame
+	int buttonsPressed = buttonsChanged & mv->m_nButtons;			// The changed ones still down are "pressed"
+	int buttonsReleased = buttonsChanged & mv->m_nOldButtons;		// The changed ones which were previously down are "released"
+	if (mv->m_nButtons & IN_DUCK)
 	{
 		mv->m_nOldButtons |= IN_DUCK;
 	}
@@ -3405,15 +3616,15 @@ void CTFGameMovement::Duck( void )
 	}
 
 	// Handle death.
-	if ( IsDead() )
+	if (IsDead())
 	{
 		// Reset view offset when dead
-		Vector vecStandViewOffset = GetPlayerViewOffset( false );
+		Vector vecStandViewOffset = GetPlayerViewOffset(false);
 		Vector vecOffset = player->GetViewOffset();
-		if ( vecOffset.z != vecStandViewOffset.z )
+		if (vecOffset.z != vecStandViewOffset.z)
 		{
 			vecOffset.z = vecStandViewOffset.z;
-			player->SetViewOffset( vecOffset );
+			player->SetViewOffset(vecOffset);
 		}
 
 		return;
@@ -3428,18 +3639,18 @@ void CTFGameMovement::Duck( void )
 	bFirstTimePredicted = prediction->IsFirstTimePredicted();
 #endif
 
-	bool bInDuck = ( player->GetFlags() & FL_DUCKING ) ? true : false;
-	if ( ( mv->m_nButtons & IN_DUCK ) || player->m_Local.m_bDucking || bInDuck )
+	bool bInDuck = (player->GetFlags() & FL_DUCKING) ? true : false;
+	if ((mv->m_nButtons & IN_DUCK) || player->m_Local.m_bDucking || bInDuck)
 	{
-		if ( ( mv->m_nButtons & IN_DUCK ) && m_pTFPlayer->CanDuck() )
+		if ((mv->m_nButtons & IN_DUCK) && m_pTFPlayer->CanDuck())
 		{
 			// DUCK
-			OnDuck( buttonsPressed );
+			OnDuck(buttonsPressed);
 		}
 		else
 		{
 			// UNDUCK (or attempt to...)
-			OnUnDuck( buttonsReleased );
+			OnUnDuck(buttonsReleased);
 		}
 	}
 	// HACK: (jimd 5/25/2006) we have a reoccuring bug (#50063 in Tracker) where the player's
@@ -3451,43 +3662,42 @@ void CTFGameMovement::Duck( void )
 	//
 	// If the player is still alive and not an observer, check to make sure that
 	// his view height is at the standing height.
-	else if ( bFirstTimePredicted && !IsDead() && !player->IsObserver() && !player->IsInAVehicle() && !( TFGameRules() && TFGameRules()->ShowMatchSummary() ) )
+	else if (bFirstTimePredicted && !IsDead() && !player->IsObserver() && !player->IsInAVehicle() && !(TFGameRules() && TFGameRules()->ShowMatchSummary()))
 	{
-		float flOffsetDelta = player->GetViewOffset().z - GetPlayerViewOffset( false ).z;
-		if ( ( fabs( flOffsetDelta ) > 0.1 ) )
+		float flOffsetDelta = player->GetViewOffset().z - GetPlayerViewOffset(false).z;
+		if ((fabs(flOffsetDelta) > 0.1))
 		{
 			// we should rarely ever get here, so assert so a coder knows when it happens
-			AssertMsg2( 0, "Restoring player view height at %i %0.3f\n", gpGlobals->tickcount, gpGlobals->curtime );
-			DevMsg( 1, "Restoring player view height at %i %0.3f.  Delta: %f.\n", gpGlobals->tickcount, gpGlobals->curtime, flOffsetDelta );
+			AssertMsg2(0, "Restoring player view height at %i %0.3f\n", gpGlobals->tickcount, gpGlobals->curtime);
+			DevMsg(1, "Restoring player view height at %i %0.3f.  Delta: %f.\n", gpGlobals->tickcount, gpGlobals->curtime, flOffsetDelta);
 
 			// set the eye height to the non-ducked height
 			SetDuckedEyeOffset(0.0f);
 		}
 	}
 
-	if ( tf_duck_debug_spew.GetBool() )
+	if (tf_duck_debug_spew.GetBool())
 	{
 #ifdef GAME_DLL
-		engine->Con_NPrintf( 0, "SERVER" );
-		engine->Con_NPrintf( 1, "m_flDucktime %3.2f", player->m_Local.m_flDucktime.Get() );
-		engine->Con_NPrintf( 2, "m_flDuckJumpTime %3.2f", player->m_Local.m_flDuckJumpTime.Get() );
-		engine->Con_NPrintf( 3, "m_bDucked %d", player->m_Local.m_bDucked.Get() );
-		engine->Con_NPrintf( 4, "m_bDucking %d", player->m_Local.m_bDucking.Get() );
-		engine->Con_NPrintf( 5, "m_bInDuckJump %d", player->m_Local.m_bInDuckJump.Get() );
-		engine->Con_NPrintf( 6, "viewoffset %3.2f, %3.2f, %3.2f", player->GetViewOffset().x, player->GetViewOffset().y, player->GetViewOffset().z );
-		engine->Con_NPrintf( 7, "IN_DUCK %d", mv->m_nButtons & IN_DUCK );
-		engine->Con_NPrintf( 8, "GetDuckTimer %3.2f", Max( 0.f, m_pTFPlayer->m_Shared.GetDuckTimer() - gpGlobals->curtime ) );
+		engine->Con_NPrintf(0, "SERVER");
+		engine->Con_NPrintf(1, "m_flDucktime %3.2f", player->m_Local.m_flDucktime.Get());
+		engine->Con_NPrintf(2, "m_flDuckJumpTime %3.2f", player->m_Local.m_flDuckJumpTime.Get());
+		engine->Con_NPrintf(3, "m_bDucked %d", player->m_Local.m_bDucked.Get());
+		engine->Con_NPrintf(4, "m_bDucking %d", player->m_Local.m_bDucking.Get());
+		engine->Con_NPrintf(5, "m_bInDuckJump %d", player->m_Local.m_bInDuckJump.Get());
+		engine->Con_NPrintf(6, "viewoffset %3.2f, %3.2f, %3.2f", player->GetViewOffset().x, player->GetViewOffset().y, player->GetViewOffset().z);
+		engine->Con_NPrintf(7, "IN_DUCK %d", mv->m_nButtons & IN_DUCK);
+		engine->Con_NPrintf(8, "GetDuckTimer %3.2f", Max(0.f, m_pTFPlayer->m_Shared.GetDuckTimer() - gpGlobals->curtime));
 #else 
-		engine->Con_NPrintf( 10 + 0, "CLIENT" );
-		engine->Con_NPrintf( 10 + 1, "m_flDucktime %3.2f", player->m_Local.m_flDucktime );
-		engine->Con_NPrintf( 10 + 2, "m_flDuckJumpTime %3.2f", player->m_Local.m_flDuckJumpTime );
-		engine->Con_NPrintf( 10 + 3, "m_bDucked %d", player->m_Local.m_bDucked );
-		engine->Con_NPrintf( 10 + 4, "m_bDucking %d", player->m_Local.m_bDucking );
-		engine->Con_NPrintf( 10 + 5, "m_bInDuckJump %d", player->m_Local.m_bInDuckJump );
-		engine->Con_NPrintf( 10 + 6, "viewoffset %3.2f, %3.2f, %3.2f", player->GetViewOffset().x, player->GetViewOffset().y, player->GetViewOffset().z );
-		engine->Con_NPrintf( 10 + 7, "IN_DUCK %d", mv->m_nButtons & IN_DUCK );
-		engine->Con_NPrintf( 10 + 8, "GetDuckTimer %3.2f", Max( 0.f, m_pTFPlayer->m_Shared.GetDuckTimer() - gpGlobals->curtime )  );
+		engine->Con_NPrintf(10 + 0, "CLIENT");
+		engine->Con_NPrintf(10 + 1, "m_flDucktime %3.2f", player->m_Local.m_flDucktime);
+		engine->Con_NPrintf(10 + 2, "m_flDuckJumpTime %3.2f", player->m_Local.m_flDuckJumpTime);
+		engine->Con_NPrintf(10 + 3, "m_bDucked %d", player->m_Local.m_bDucked);
+		engine->Con_NPrintf(10 + 4, "m_bDucking %d", player->m_Local.m_bDucking);
+		engine->Con_NPrintf(10 + 5, "m_bInDuckJump %d", player->m_Local.m_bInDuckJump);
+		engine->Con_NPrintf(10 + 6, "viewoffset %3.2f, %3.2f, %3.2f", player->GetViewOffset().x, player->GetViewOffset().y, player->GetViewOffset().z);
+		engine->Con_NPrintf(10 + 7, "IN_DUCK %d", mv->m_nButtons & IN_DUCK);
+		engine->Con_NPrintf(10 + 8, "GetDuckTimer %3.2f", Max(0.f, m_pTFPlayer->m_Shared.GetDuckTimer() - gpGlobals->curtime));
 #endif
 	}
 }
-
