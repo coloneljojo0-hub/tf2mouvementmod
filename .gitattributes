@@ -35,7 +35,7 @@ README.md text
 CONTRIBUTING text
 LICENSE text
 *.exe filter=lfs diff=lfs merge=lfs -text
-*.dll binary
+*.dll filter=lfs diff=lfs merge=lfs -text
 protoc binary
 ccache binary
 *_english.txt binary
