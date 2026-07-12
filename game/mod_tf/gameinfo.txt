@@ -1,6 +1,6 @@
 "GameInfo"
 {
-	game					":)"
+	game					"SOURCE SURGE"
 	type 					multiplayer_only
 	nomodels				1
 	nohimodel 				1

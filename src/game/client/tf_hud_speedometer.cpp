@@ -6,6 +6,8 @@
 #include <vgui/ILocalize.h>
 #include <vgui/IScheme.h>
 
+ConVar cl_speedometer_enabled("cl_speedometer_enabled", "1", FCVAR_ARCHIVE, "Show/hide the speedometer");
+
 using namespace vgui;
 
 // Forward declaration — defined in tf_gamemovement.cpp
@@ -69,6 +71,9 @@ void CTFHudSpeedometer::ApplySchemeSettings(IScheme* pScheme)
 
 bool CTFHudSpeedometer::ShouldDraw()
 {
+    if (!cl_speedometer_enabled.GetBool())
+        return false;
+
     C_TFPlayer* pPlayer = C_TFPlayer::GetLocalTFPlayer();
     if (!pPlayer)
         return false;

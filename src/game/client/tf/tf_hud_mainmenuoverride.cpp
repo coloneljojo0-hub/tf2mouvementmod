@@ -68,6 +68,9 @@
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
+// Forward declaration — defined in tf_hud_modmenu.cpp
+void ToggleModMenu();
+
 CMOTDManager CHudMainMenuOverride::m_MOTDManager;
 
 void AddSubKeyNamed( KeyValues *pKeys, const char *pszName );
@@ -1845,6 +1848,11 @@ void CHudMainMenuOverride::OnCommand( const char *command )
 	else if ( !Q_stricmp( command, "opentf2options" ) )
 	{
 		GetClientModeTFNormal()->GameUI()->SendMainMenuCommand( "engine opentf2options" );
+	}
+	else if (!Q_stricmp(command, "openmodmenu"))
+	{
+		ToggleModMenu();
+		return;
 	}
 	else if ( !Q_stricmp( command, "motd_prev" ) )
 	{

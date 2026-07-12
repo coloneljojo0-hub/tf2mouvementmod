@@ -1,6 +1,13 @@
-#pragma once
+//========= Copyright Valve Corporation, All rights reserved. ============//
+//
+// TF Speedometer HUD Element
+//
+//=============================================================================
 #ifndef TF_HUD_SPEEDOMETER_H
 #define TF_HUD_SPEEDOMETER_H
+#ifdef _WIN32
+#pragma once
+#endif
 
 #include "cbase.h"
 #include "hud.h"
@@ -27,6 +34,7 @@ protected:
 private:
     vgui::HFont m_hFont;
     float m_flCurrentSpeed;
+    int m_iCachedFontSize;
 };
 
 #endif // TF_HUD_SPEEDOMETER_H
