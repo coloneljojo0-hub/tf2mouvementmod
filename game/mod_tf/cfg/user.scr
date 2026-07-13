@@ -32,7 +32,7 @@
 
 
 // Half-Life User Info Configuration Layout Script (stores last settings chosen, too)
-// File generated:  Fri Jul 10 11:43:51 AM
+// File generated:  Mon Jul 13 13:09:51 AM
 //
 //
 // Cvar	-	Setting
@@ -98,7 +98,7 @@ DESCRIPTION INFO_OPTIONS
 		"#TF_Hitbeeps"
 		"#Tooltip_Hitbeeps"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"tf_dingaling_volume"
@@ -148,7 +148,7 @@ DESCRIPTION INFO_OPTIONS
 		"#TF_LastHitbeeps"
 		"#Tooltip_Hitbeeps"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"tf_dingaling_lasthit_volume"
@@ -284,7 +284,7 @@ DESCRIPTION INFO_OPTIONS
 		"#TF_autozoom"
 		"#Tooltip_autozoom"
 		{ BOOL }
-		{ "0" }
+		{ "1" }
 	}
 
 	"tf_hud_no_crosshair_on_scope_zoom"
@@ -338,7 +338,7 @@ DESCRIPTION INFO_OPTIONS
 		"#GameUI_EnableHUDMinMode"
 		"#Tooltip_EnableHUDMinMode"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"tf_colorblindassist"
@@ -520,7 +520,7 @@ DESCRIPTION INFO_OPTIONS
 	{
 		"#TF_ScoreBoard_PingAsText"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"tf_scoreboard_alt_class_icons"
@@ -610,7 +610,7 @@ DESCRIPTION INFO_OPTIONS
 		"#TF_DisableWeatherParticles"
 		"#Tooltip_DisableWeatherParticles"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"cl_disablehtmlmotd"
@@ -672,7 +672,7 @@ DESCRIPTION INFO_OPTIONS
 		"#TF_use_min_viewmodels_option"
 		"#Tooltip_use_min_viewmodels_option"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"cl_spraydisable"
@@ -711,7 +711,7 @@ DESCRIPTION INFO_OPTIONS
 		"#Valve_UseSteamCloud"
 		"#Tooltip_UseSteamCloud"
 		{ BOOL }
-		{ "1" }
+		{ "0" }
 	}
 
 	"cl_steamscreenshots"

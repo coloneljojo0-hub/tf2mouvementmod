@@ -27,6 +27,8 @@
 #include <vgui/ISurface.h>
 #include "hud_lcd.h"
 
+#include "tf_discord_rpc.h"
+
 // memdbgon must be the last include file in a .cpp file!!!
 #include "tier0/memdbgon.h"
 
@@ -392,12 +394,14 @@ CHud::CHud()
 //-----------------------------------------------------------------------------
 // Purpose: This is called every time the DLL is loaded
 //-----------------------------------------------------------------------------
-void CHud::Init( void )
+void CHud::Init(void)
 {
-	HOOK_HUD_MESSAGE( gHUD, ResetHUD );
-	
+	DiscordRPC_Init();
+
+	HOOK_HUD_MESSAGE(gHUD, ResetHUD);
+
 #ifdef CSTRIKE_DLL
-	HOOK_HUD_MESSAGE( gHUD, SendAudio );
+	HOOK_HUD_MESSAGE(gHUD, SendAudio);
 #endif
 
 	InitFonts();
@@ -408,45 +412,45 @@ void CHud::Init( void )
 	gLCD.Init();
 
 	// Initialize all created elements
-	for ( int i = 0; i < m_HudList.Size(); i++ )
+	for (int i = 0; i < m_HudList.Size(); i++)
 	{
 		m_HudList[i]->Init();
 	}
 
 	m_bHudTexturesLoaded = false;
 
-	KeyValues *kv = new KeyValues( "layout" );
-	if ( kv )
+	KeyValues* kv = new KeyValues("layout");
+	if (kv)
 	{
-		if ( kv->LoadFromFile( filesystem, "scripts/HudLayout.res" ) )
+		if (kv->LoadFromFile(filesystem, "scripts/HudLayout.res"))
 		{
 			int numelements = m_HudList.Size();
 
-			for ( int i = 0; i < numelements; i++ )
+			for (int i = 0; i < numelements; i++)
 			{
-				CHudElement *element = m_HudList[i];
+				CHudElement* element = m_HudList[i];
 
-				vgui::Panel *pPanel = dynamic_cast<vgui::Panel*>(element);
-				if ( !pPanel )
+				vgui::Panel* pPanel = dynamic_cast<vgui::Panel*>(element);
+				if (!pPanel)
 				{
-					Assert( false );
-					Msg( "Non-vgui hud element %s\n", m_HudList[i]->GetName() );
+					Assert(false);
+					Msg("Non-vgui hud element %s\n", m_HudList[i]->GetName());
 					continue;
 				}
 
-				KeyValues *key = kv->FindKey( pPanel->GetName(), false );
-				if ( !key )
+				KeyValues* key = kv->FindKey(pPanel->GetName(), false);
+				if (!key)
 				{
-					Assert( false );
-					Msg( "Hud element '%s' doesn't have an entry '%s' in scripts/HudLayout.res\n", m_HudList[i]->GetName(), pPanel->GetName() );
+					Assert(false);
+					Msg("Hud element '%s' doesn't have an entry '%s' in scripts/HudLayout.res\n", m_HudList[i]->GetName(), pPanel->GetName());
 				}
 
 				// Note:  When a panel is parented to the module root, it's "parent" is returned as NULL.
-				if ( !element->IsParentedToClientDLLRootPanel() && 
-					 !pPanel->GetParent() )
+				if (!element->IsParentedToClientDLLRootPanel() &&
+					!pPanel->GetParent())
 				{
-					Assert( false );
-					DevMsg( "Hud element '%s'/'%s' doesn't have a parent\n", m_HudList[i]->GetName(), pPanel->GetName() );
+					Assert(false);
+					DevMsg("Hud element '%s'/'%s' doesn't have a parent\n", m_HudList[i]->GetName(), pPanel->GetName());
 				}
 			}
 		}
@@ -454,24 +458,24 @@ void CHud::Init( void )
 		kv->deleteThis();
 	}
 
-	if ( m_bHudTexturesLoaded )
+	if (m_bHudTexturesLoaded)
 		return;
 
 	m_bHudTexturesLoaded = true;
-	CUtlDict< CHudTexture *, int >	textureList;
+	CUtlDict< CHudTexture*, int >	textureList;
 
 	// check to see if we have sprites for this res; if not, step down
-	LoadHudTextures( textureList, "scripts/hud_textures", NULL );
-	LoadHudTextures( textureList, "scripts/mod_textures", NULL );
+	LoadHudTextures(textureList, "scripts/hud_textures", NULL);
+	LoadHudTextures(textureList, "scripts/mod_textures", NULL);
 
 	int c = textureList.Count();
-	for ( int index = 0; index < c; index++ )
+	for (int index = 0; index < c; index++)
 	{
-		CHudTexture* tex = textureList[ index ];
-		AddSearchableHudIconToList( *tex );
+		CHudTexture* tex = textureList[index];
+		AddSearchableHudIconToList(*tex);
 	}
 
-	FreeHudTextureList( textureList );
+	FreeHudTextureList(textureList);
 }
 
 //-----------------------------------------------------------------------------
@@ -498,13 +502,15 @@ void CHud::InitFonts()
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CHud::Shutdown( void )
+void CHud::Shutdown(void)
 {
+	DiscordRPC_Shutdown();
+
 	gLCD.Shutdown();
 
 	// Deleting hudlist items can result in them being removed from the same hudlist (m_bNeedsRemove).
 	//	So go through and kill the last item until the array is empty.
-	while ( m_HudList.Size() > 0 )
+	while (m_HudList.Size() > 0)
 	{
 		delete m_HudList.Tail();
 	}
@@ -512,6 +518,7 @@ void CHud::Shutdown( void )
 	m_HudList.Purge();
 	m_bHudTexturesLoaded = false;
 }
+
 
 
 //-----------------------------------------------------------------------------
@@ -1176,10 +1183,12 @@ bool CHud::DoesRenderGroupExist( int iGroupIndex )
 //			time - 
 // Output : int - 1 if there were changes, 0 otherwise
 //-----------------------------------------------------------------------------
-void CHud::UpdateHud( bool bActive )
+void CHud::UpdateHud(bool bActive)
 {
+	DiscordRPC_RunCallbacks();
+
 	// clear the weapon bits.
-	gHUD.m_iKeyBits &= (~(IN_WEAPON1|IN_WEAPON2));
+	gHUD.m_iKeyBits &= (~(IN_WEAPON1 | IN_WEAPON2));
 
 	g_pClientMode->Update();
 

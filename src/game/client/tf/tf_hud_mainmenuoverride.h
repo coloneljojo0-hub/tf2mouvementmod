@@ -43,6 +43,7 @@ class CLobbyContainerFrame_Comp;
 class CLobbyContainerFrame_MvM;
 class CLobbyContainerFrame_Casual;
 class CPvPRankPanel;
+class CTFPlayerModelPanel;
 
 enum mm_button_styles
 {
@@ -206,6 +207,8 @@ private:
 
 	CExButton				*m_pVRModeButton;
 	vgui::Panel				*m_pVRModeBackground;
+
+	CTFPlayerModelPanel* m_pMainMenuPlayerModel;
 
 	KeyValues				*m_pButtonKV;
 	bool					m_bReapplyButtonKVs;

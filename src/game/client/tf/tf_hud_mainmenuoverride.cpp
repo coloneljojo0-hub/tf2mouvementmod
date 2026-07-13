@@ -62,6 +62,8 @@
 #include "econ_paintkit.h"
 #include "ienginevgui.h"
 
+#include "tf_playermodelpanel.h"
+
 
 #include "c_tf_gamestats.h"
 
@@ -180,6 +182,7 @@ CHudMainMenuOverride::CHudMainMenuOverride( IViewPort *pViewPort ) : BaseClass( 
 	m_pMOTDTitleImage = NULL;
 	m_hTitleLabelFont = vgui::INVALID_FONT;
 
+	m_pMainMenuPlayerModel = NULL;
 
 	m_bHaveNewMOTDs = false;
 	m_bMOTDShownAtStartup = false;
@@ -529,6 +532,24 @@ void CHudMainMenuOverride::ApplySchemeSettings( IScheme *scheme )
 	}
 
 	m_pQuitButton = dynamic_cast<CExButton*>( FindChildByName("QuitButton") );
+	m_pMainMenuPlayerModel = dynamic_cast<CTFPlayerModelPanel*>(FindChildByName("classmodelpanel"));
+	if (m_pMainMenuPlayerModel)
+	{
+		Msg("classmodelpanel found successfully\n");
+		m_pMainMenuPlayerModel->SetToPlayerClass(TF_CLASS_SPY);
+		m_pMainMenuPlayerModel->SetTeam(TF_TEAM_RED);
+		m_pMainMenuPlayerModel->SetVisible(true);
+
+		int x, y, w, t;
+		m_pMainMenuPlayerModel->GetPos(x, y);
+		m_pMainMenuPlayerModel->GetSize(w, t);
+		Msg("Model panel pos=(%d,%d) size=(%d,%d)\n", x, y, w, t);
+	}
+	else
+	{
+		Msg("classmodelpanel NOT FOUND — check .res file\n");
+	}
+
 	m_pDisconnectButton = dynamic_cast<CExButton*>( FindChildByName("DisconnectButton") );
 	m_pBackToReplaysButton = dynamic_cast<CExButton*>( FindChildByName("BackToReplaysButton") );
 	m_pStoreHasNewItemsImage = dynamic_cast<ImagePanel*>( FindChildByName( "StoreHasNewItemsImage", true ) );
