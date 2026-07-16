@@ -32,6 +32,8 @@
 
 #include "mute_player_dialog.h"
 
+#include <vgui_controls/Slider.h>
+
 using namespace vgui;
 using namespace GCSDK;
 
@@ -45,12 +47,14 @@ class CLobbyContainerFrame_Casual;
 class CPvPRankPanel;
 class CTFPlayerModelPanel;
 
+
 enum mm_button_styles
 {
 	MMBS_NORMAL = 0,
 	MMBS_SUBBUTTON = 1,
 	MMBS_CUSTOM,
 };
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
@@ -126,6 +130,7 @@ public:
 	MESSAGE_FUNC( OnUpdateMenu, "UpdateMenu" );
 	MESSAGE_FUNC_PARAMS( OnConfirm, "ConfirmDlgResult", data );
 	MESSAGE_FUNC( OnMainMenuStabilized, "MainMenuStabilized" );
+	MESSAGE_FUNC_FLOAT(OnSliderMoved, "SliderMoved", position);
 
 	void		ScheduleTrainingCheck( bool bWasInTraining ) { m_flCheckTrainingAt = (engine->Time() + 1.5); m_bWasInTraining = bWasInTraining; }
 	void		ScheduleItemCheck( void ) { m_flCheckUnclaimedItems = (engine->Time() + 1.5); }
@@ -209,6 +214,10 @@ private:
 	vgui::Panel				*m_pVRModeBackground;
 
 	CTFPlayerModelPanel* m_pMainMenuPlayerModel;
+	vgui::Slider* m_pModelRotationSlider = NULL;
+	float m_flModelYaw = 130.0f; // starting yaw, matches your current default angle
+
+
 
 	KeyValues				*m_pButtonKV;
 	bool					m_bReapplyButtonKVs;

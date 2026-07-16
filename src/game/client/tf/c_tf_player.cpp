@@ -147,6 +147,30 @@ static_assert( TF_TEAM_BLUE == 3, "If this assert fires, update the assert and t
 CEconItemView *GetEconItemViewFromProxyEntity( void *pEntity );
 C_TFPlayer *GetOwnerFromProxyEntity( void *pEntity );
 
+ConVar sv_force_spy_mode( "sv_force_spy_mode", "0", FCVAR_REPLICATED, "Forces all players to spawn as Spy with a locked Ambassador/Big Earner loadout." );
+
+static CEconItemView *GetForcedSpyItem( int iSlot )
+{
+    static CEconItemView s_AmbassadorItem;
+    static CEconItemView s_BigEarnerItem;
+    static bool s_bInitialized = false;
+
+    if ( !s_bInitialized )
+    {
+        s_AmbassadorItem.Init( 61, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false );   // The Ambassador
+        s_BigEarnerItem.Init( 461, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false );   // The Big Earner
+        s_bInitialized = true;
+    }
+
+    if ( iSlot == LOADOUT_POSITION_PRIMARY )
+        return &s_AmbassadorItem;
+
+    if ( iSlot == LOADOUT_POSITION_MELEE )
+        return &s_BigEarnerItem;
+
+    return NULL;
+}
+
 // --------------------------------------------------------------------------------
 // Local Convar Helper Function
 // --------------------------------------------------------------------------------

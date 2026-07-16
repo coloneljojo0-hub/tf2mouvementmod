@@ -98,6 +98,16 @@ void cc_tf_mainmenu_match_panel_type( IConVar *pConVar, const char *pOldString, 
 	}
 }
 
+void CHudMainMenuOverride::OnSliderMoved(float position)
+{
+	m_flModelYaw = position;
+
+	if (m_pMainMenuPlayerModel)
+	{
+		QAngle angNew(0, m_flModelYaw, 0);
+		m_pMainMenuPlayerModel->SetModelAnglesAndPosition(angNew, m_pMainMenuPlayerModel->GetPlayerPos());
+	}
+}
 
 ConVar tf_recent_achievements( "tf_recent_achievements", "0", FCVAR_ARCHIVE );
 ConVar tf_find_a_match_hint_viewed( "tf_find_a_match_hint_viewed", "0", FCVAR_ARCHIVE );
@@ -468,6 +478,15 @@ void CHudMainMenuOverride::ApplySettings( KeyValues *inResourceData )
 //-----------------------------------------------------------------------------
 void CHudMainMenuOverride::ApplySchemeSettings( IScheme *scheme )
 {
+	for (int i = 0; i < GetChildCount(); i++)
+	{
+		vgui::Panel* pChild = GetChild(i);
+		if (pChild)
+		{
+			Msg("MainMenu child panel: %s\n", pChild->GetName());
+		}
+	}
+	
 	// We need to re-hook ourselves up to the TF client scheme, because the GameUI will try to change us their its scheme
 	vgui::HScheme pScheme = vgui::scheme()->LoadSchemeFromFileEx( enginevgui->GetPanel( PANEL_CLIENTDLL ), "resource/ClientScheme.res", "ClientScheme");
 	SetScheme(pScheme);
@@ -531,23 +550,50 @@ void CHudMainMenuOverride::ApplySchemeSettings( IScheme *scheme )
 		pConditions->deleteThis();
 	}
 
+	if (!m_pModelRotationSlider)
+	{
+		m_pModelRotationSlider = new vgui::Slider(this, "ModelRotationSlider");
+		m_pModelRotationSlider->AddActionSignalTarget(this);
+	}
+
+	m_pModelRotationSlider->SetVisible(true);
+	m_pModelRotationSlider->SetEnabled(true);
+	m_pModelRotationSlider->SetZPos(200);        // higher than model panel's 100
+	m_pModelRotationSlider->SetRange(0, 360);
+	m_pModelRotationSlider->SetValue((int)m_flModelYaw);
+	m_pModelRotationSlider->MoveToFront();          // called AFTER model panel's MoveToFront, so it wins
+
 	m_pQuitButton = dynamic_cast<CExButton*>( FindChildByName("QuitButton") );
 	m_pMainMenuPlayerModel = dynamic_cast<CTFPlayerModelPanel*>(FindChildByName("classmodelpanel"));
+
+	Msg("classmodelpanel found successfully\n");
+	m_pMainMenuPlayerModel->SetToPlayerClass(TF_CLASS_SPY);
+	m_pMainMenuPlayerModel->SetTeam(TF_TEAM_RED);
+	m_pMainMenuPlayerModel->SetVisible(true);
+	m_pMainMenuPlayerModel->SetMouseInputEnabled(true); // required for click-drag rotate, .res value isn't being applied
+	m_pMainMenuPlayerModel->SetZPos(100);
+	m_pMainMenuPlayerModel->MoveToFront();
 	if (m_pMainMenuPlayerModel)
 	{
 		Msg("classmodelpanel found successfully\n");
 		m_pMainMenuPlayerModel->SetToPlayerClass(TF_CLASS_SPY);
 		m_pMainMenuPlayerModel->SetTeam(TF_TEAM_RED);
 		m_pMainMenuPlayerModel->SetVisible(true);
+		m_pMainMenuPlayerModel->SetMouseInputEnabled(true);
+		m_pMainMenuPlayerModel->SetZPos(100);
+		m_pMainMenuPlayerModel->MoveToFront();
 
 		int x, y, w, t;
 		m_pMainMenuPlayerModel->GetPos(x, y);
 		m_pMainMenuPlayerModel->GetSize(w, t);
 		Msg("Model panel pos=(%d,%d) size=(%d,%d)\n", x, y, w, t);
-	}
-	else
-	{
-		Msg("classmodelpanel NOT FOUND — check .res file\n");
+		Msg("Player class after set: %d\n", m_pMainMenuPlayerModel->GetPlayerClass());
+
+		studiohdr_t* pHdr = m_pMainMenuPlayerModel->GetStudioHdr();
+		if (pHdr)
+			Msg("Model loaded successfully: %s\n", pHdr->name);
+		else
+			Msg("MODEL FAILED TO LOAD (GetStudioHdr returned NULL)\n");
 	}
 
 	m_pDisconnectButton = dynamic_cast<CExButton*>( FindChildByName("DisconnectButton") );
@@ -915,39 +961,74 @@ void CHudMainMenuOverride::RemoveAllMenuEntries( void )
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
-void CHudMainMenuOverride::PerformLayout( void )
+void CHudMainMenuOverride::PerformLayout(void)
 {
 	BaseClass::PerformLayout();
 
 	bool bFirstButton = true;
-
 	int iYPos = m_iButtonY;
-	FOR_EACH_VEC( m_pMMButtonEntries, i )
+
+	FOR_EACH_VEC(m_pMMButtonEntries, i)
 	{
 		bool bIsVisible = (m_pMMButtonEntries[i].pPanel ? m_pMMButtonEntries[i].pPanel->IsVisible() : m_pMMButtonEntries[i].bIsVisible);
-		if ( !bIsVisible )
+		if (!bIsVisible)
 			continue;
 
-		if ( bFirstButton && m_pMMButtonEntries[i].pPanel != NULL )
+		if (bFirstButton && m_pMMButtonEntries[i].pPanel != NULL)
 		{
 			m_pMMButtonEntries[i].pPanel->NavigateTo();
 			bFirstButton = false;
 		}
 
-		// Don't reposition it if it's a custom button
-		if ( m_pMMButtonEntries[i].iStyle == MMBS_CUSTOM )
+		if (m_pMMButtonEntries[i].iStyle == MMBS_CUSTOM)
 			continue;
 
-		// If we're a spacer, just leave a blank and move on
-		if ( m_pMMButtonEntries[i].pPanel == NULL )
+		if (m_pMMButtonEntries[i].pPanel == NULL)
 		{
 			iYPos += YRES(20);
 			continue;
 		}
 
-		m_pMMButtonEntries[i].pPanel->SetPos( (GetWide() * 0.5) + m_iButtonXOffset, iYPos );
+		m_pMMButtonEntries[i].pPanel->SetPos((GetWide() * 0.5) + m_iButtonXOffset, iYPos);
 		iYPos += m_pMMButtonEntries[i].pPanel->GetTall() + m_iButtonYDelta;
+	} // <-- closes the FOR_EACH_VEC loop
+
+	int screenWide, screenTall;
+	vgui::surface()->GetScreenSize(screenWide, screenTall);
+
+	int modelWide = 700;
+	int modelTall = 800;
+	int rightMargin = 60;
+
+	int modelX = screenWide - modelWide - rightMargin;
+	int modelY = 30;
+
+	if (m_pMainMenuPlayerModel)
+	{
+		m_pMainMenuPlayerModel->SetPos(modelX, modelY);
+		m_pMainMenuPlayerModel->SetSize(modelWide, modelTall);
 	}
+
+	if (m_pModelRotationSlider)
+	{
+		m_pModelRotationSlider->SetPos(modelX + 30, modelY + 750);
+		m_pModelRotationSlider->SetSize(modelWide - 60, 30);
+	}
+
+	if (m_pEventPromoContainer && m_pSafeModeContainer)
+	{
+		m_pEventPromoContainer->SetVisible(!cl_mainmenu_safemode.GetBool());
+		m_pSafeModeContainer->SetVisible(cl_mainmenu_safemode.GetBool());
+		if (cl_mainmenu_safemode.GetBool())
+		{
+			g_pClientMode->GetViewportAnimationController()->StartAnimationSequence(m_pSafeModeContainer, "MMenu_SafeMode_Blink");
+		}
+		else
+		{
+			g_pClientMode->GetViewportAnimationController()->CancelAnimationsForPanel(m_pSafeModeContainer);
+		}
+	}
+ // <-- closes PerformLayout
 
 	if ( m_pEventPromoContainer && m_pSafeModeContainer )
 	{
@@ -1819,7 +1900,10 @@ void CHudMainMenuOverride::UpdateRankPanelVisibility()
 	bool bConnectedToGC = GTFGCClientSystem()->BConnectedtoGC();
 
 	m_pRankPanel->SetVisible( bConnectedToGC );
-	m_pRankModelPanel->SetVisible( bConnectedToGC );
+	if (m_pRankModelPanel)
+	{
+		m_pRankModelPanel->SetVisible(false);
+	}
 	SetControlVisible( "CycleRankTypeButton", bConnectedToGC );
 	SetControlVisible( "NoGCMessage", !bConnectedToGC, true );
 	SetControlVisible( "NoGCImage", !bConnectedToGC, true );

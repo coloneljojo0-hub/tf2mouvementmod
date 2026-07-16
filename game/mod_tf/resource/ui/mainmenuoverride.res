@@ -2206,24 +2206,27 @@
 		"armedFgColor_override" "235 226 202 255"
 		"depressedFgColor_override" "46 43 42 255"
 	}
-	
+
 	"classmodelpanel"
 	{
 		"ControlName"	"CTFPlayerModelPanel"
 		"fieldName"		"classmodelpanel"
-		"xpos"			"r-350"
-		"ypos"			"80"
+		"xpos"			"800"
+		"ypos"			"100"
 		"zpos"			"1"
-		"wide"			"320"
-		"tall"			"400"
+		"wide"			"400"
+		"tall"			"500"
 		"visible"		"1"
 		"enabled"		"1"
 		"mouseinputenabled"	"1"
 
+		"fov"			"54"
+		"start_framed"	"1"
+
 		"model"
 		{
 			"angles_x"		"0"
-			"angles_y"		"180"
+			"angles_y"		"130"
 			"angles_z"		"0"
 		}
 	}
