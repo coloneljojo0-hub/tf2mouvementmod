@@ -317,6 +317,30 @@ static const char *s_pszTauntRPSParticleNames[] =
 	"rps_scissors_blue_win"
 };
 
+ConVar sv_force_spy_mode("sv_force_spy_mode", "0", FCVAR_REPLICATED, "Forces all players to spawn as Spy with a locked Ambassador/Big Earner loadout.");
+
+static CEconItemView* GetForcedSpyItem(int iSlot)
+{
+	static CEconItemView s_AmbassadorItem;
+	static CEconItemView s_BigEarnerItem;
+	static bool s_bInitialized = false;
+
+	if (!s_bInitialized)
+	{
+		s_AmbassadorItem.Init(61, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false);   // The Ambassador
+		s_BigEarnerItem.Init(461, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false);   // The Big Earner
+		s_bInitialized = true;
+	}
+
+	if (iSlot == LOADOUT_POSITION_PRIMARY)
+		return &s_AmbassadorItem;
+
+	if (iSlot == LOADOUT_POSITION_MELEE)
+		return &s_BigEarnerItem;
+
+	return NULL;
+}
+
 // -------------------------------------------------------------------------------- //
 // Player animation event. Sent to the client when a player fires, jumps, reloads, etc..
 // -------------------------------------------------------------------------------- //
@@ -938,6 +962,10 @@ static void HandleCoachCommand( CTFPlayer *pPlayer, eCoachCommand command )
 //-----------------------------------------------------------------------------
 CTFPlayer::CTFPlayer() 
 {
+	m_bSlamArmed = false;
+	m_flAirborneStartTime = 0.0f;
+	m_bWasOnGroundLastTick = true;
+
 	m_pAttributes = this;
 
 	m_PlayerAnimState = CreateTFPlayerAnimState( this );
@@ -2749,6 +2777,70 @@ void CTFPlayer::PostThink()
 			SetAbsVelocity( speed * ahead );
 		}
 	}
+	// --- Red Spy Slam ---
+	bool bOnGroundNow = (GetFlags() & FL_ONGROUND) != 0;
+	bool bIsSlamCapable = (GetTeamNumber() == TF_TEAM_RED) && IsPlayerClass(TF_CLASS_SPY);
+
+	if (!bOnGroundNow)
+	{
+		// just left the ground
+		if (m_bWasOnGroundLastTick)
+		{
+			m_flAirborneStartTime = gpGlobals->curtime;
+			m_bSlamArmed = false;
+		}
+
+		// been airborne long enough, and pressed the slam key
+		if (bIsSlamCapable && !m_bSlamArmed && (gpGlobals->curtime - m_flAirborneStartTime >= 1.0f) && (m_nButtons & IN_DUCK))
+		{
+			m_bSlamArmed = true;
+			EmitSound("Weapon_Mantreads.Impact"); // placeholder "armed" cue, swap for a proper sound/particle later if you want
+		}
+	}
+	else
+	{
+		// just landed
+		if (!m_bWasOnGroundLastTick && bIsSlamCapable && m_bSlamArmed)
+		{
+			// --- Perform the slam ---
+			const float flSlamRadius = 300.0f;
+			const float flSlamDamage = 120.0f;
+			const float flSlamHorizontalForce = 550.0f;
+			const float flSlamUpwardForce = 450.0f;
+
+			CUtlVector< CTFPlayer* > vecTargets;
+			CollectPlayers(&vecTargets, GetEnemyTeam(GetTeamNumber()), COLLECT_ONLY_LIVING_PLAYERS);
+
+			FOR_EACH_VEC(vecTargets, i)
+			{
+				CTFPlayer* pTarget = vecTargets[i];
+				if (!pTarget)
+					continue;
+
+				float flDistSqr = (pTarget->GetAbsOrigin() - GetAbsOrigin()).LengthSqr();
+				if (flDistSqr > (flSlamRadius * flSlamRadius))
+					continue;
+
+				CTakeDamageInfo slamInfo(this, this, flSlamDamage, DMG_CRUSH, TF_DMG_CUSTOM_BOOTS_STOMP);
+				pTarget->TakeDamage(slamInfo);
+
+				Vector vecKnockDir = pTarget->GetAbsOrigin() - GetAbsOrigin();
+				vecKnockDir.z = 0;
+				VectorNormalize(vecKnockDir);
+
+				Vector vecKnockback = (vecKnockDir * flSlamHorizontalForce) + Vector(0, 0, flSlamUpwardForce);
+				pTarget->ApplyAbsVelocityImpulse(vecKnockback);
+			}
+
+			UTIL_ScreenShake(GetAbsOrigin(), 25.0f, 150.0, 1.0, flSlamRadius, SHAKE_START);
+			EmitSound("Weapon_Mantreads.Impact");
+			EmitSound("Player.FallDamageDealt");
+		}
+
+		m_bSlamArmed = false;
+	}
+
+	m_bWasOnGroundLastTick = bOnGroundNow;
 
 	UpdateHalloween();
 }
@@ -4884,19 +4976,24 @@ void CTFPlayer::ManageRegularWeapons( TFPlayerClassData_t *pData )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-CEconItemView *CTFPlayer::GetLoadoutItem( int iClass, int iSlot, bool bReportWhitelistFails )
+CEconItemView* CTFPlayer::GetLoadoutItem(int iClass, int iSlot, bool bReportWhitelistFails)
 {
-	if ( TFGameRules()->IsInItemTestingMode() )
+	if (sv_force_spy_mode.GetBool() && iClass == TF_CLASS_SPY)
 	{
-		CEconItemView *pItem = ItemTesting_GetTestItem( iClass, iSlot );
-		if ( pItem )
+		return GetForcedSpyItem(iSlot);
+	}
+
+	if (TFGameRules()->IsInItemTestingMode())
+	{
+		CEconItemView* pItem = ItemTesting_GetTestItem(iClass, iSlot);
+		if (pItem)
 			return pItem;
 	}
 
-	if ( TFGameRules()->IsInTraining() || TFGameRules()->IsInItemTestingMode() )
+	if (TFGameRules()->IsInTraining() || TFGameRules()->IsInItemTestingMode())
 	{
-		CTFInventoryManager *pInventoryManager = TFInventoryManager();
-		return pInventoryManager->GetBaseItemForClass( iClass, iSlot );
+		CTFInventoryManager* pInventoryManager = TFInventoryManager();
+		return pInventoryManager->GetBaseItemForClass(iClass, iSlot);
 	}
 
 	CEconItemView *pItem = m_Inventory.GetItemInLoadout( iClass, iSlot );
@@ -6742,6 +6839,11 @@ void CTFPlayer::HandleCommand_JoinClass( const char *pClassName, bool bAllowSpaw
 	if ( TFGameRules()->State_Get() == GR_STATE_GAME_OVER )
 	{
 		return;
+	}
+
+	if (sv_force_spy_mode.GetBool())
+	{
+		pClassName = "spy";
 	}
 
 // 	if ( TFGameRules()->ArePlayersInHell() && ( m_Shared.m_iDesiredPlayerClass > TF_CLASS_UNDEFINED ) )
@@ -8959,21 +9061,31 @@ int CTFPlayer::OnTakeDamage( const CTakeDamageInfo &inputInfo )
 		bool bHitEnemy = false;
 
 		// Are we transferring falling damage to someone else?
-		if ( GetGroundEntity() && GetGroundEntity()->IsPlayer() && m_Shared.CanFallStomp() )
+		if (GetGroundEntity() && GetGroundEntity()->IsPlayer() && (m_Shared.CanFallStomp() || IsPlayerClass(TF_CLASS_SPY)))
 		{
-			// Did we land on a guy from the enemy team?
-			CTFPlayer *pOther = ToTFPlayer( GetGroundEntity() );
-			if ( pOther && pOther->GetTeamNumber() != GetTeamNumber() )
+			CTFPlayer* pOther = ToTFPlayer(GetGroundEntity());
+			if (pOther && pOther->GetTeamNumber() != GetTeamNumber())
 			{
 				float flStompDamage = 10.0f + info.GetDamage() * 3.f;
 
-				CTakeDamageInfo infoInner( this, this, GetEquippedWearableForLoadoutSlot( LOADOUT_POSITION_SECONDARY ), flStompDamage, DMG_FALL, TF_DMG_CUSTOM_BOOTS_STOMP );
-				pOther->TakeDamage( infoInner );
+				CTakeDamageInfo infoInner(this, this, GetEquippedWearableForLoadoutSlot(LOADOUT_POSITION_SECONDARY), flStompDamage, DMG_FALL, TF_DMG_CUSTOM_BOOTS_STOMP);
+				pOther->TakeDamage(infoInner);
 				m_Local.m_flFallVelocity = 0;
-				info.SetDamage( 0.0f );
-				EmitSound( "Weapon_Mantreads.Impact" );
-				EmitSound( "Player.FallDamageDealt" );
-				UTIL_ScreenShake( pOther->WorldSpaceCenter(), 15.0, 150.0, 1.0, 500, SHAKE_START );
+				info.SetDamage(0.0f);
+				EmitSound("Weapon_Mantreads.Impact");
+				EmitSound("Player.FallDamageDealt");
+				UTIL_ScreenShake(pOther->WorldSpaceCenter(), 15.0, 150.0, 1.0, 500, SHAKE_START);
+
+				// Knockback: mostly horizontal push-away, with a strong upward component
+				Vector vecKnockDir = pOther->GetAbsOrigin() - GetAbsOrigin();
+				vecKnockDir.z = 0;
+				VectorNormalize(vecKnockDir);
+
+				float flHorizontalForce = 500.0f;
+				float flUpwardForce = 400.0f;
+
+				Vector vecKnockback = (vecKnockDir * flHorizontalForce) + Vector(0, 0, flUpwardForce);
+				pOther->ApplyAbsVelocityImpulse(vecKnockback);
 
 				bHitEnemy = true;
 			}

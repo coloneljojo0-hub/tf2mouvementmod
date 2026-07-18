@@ -121,6 +121,7 @@ public:
 	CTFPlayer();
 	~CTFPlayer();
 
+
 	//=============================================================================
 	// HPE_BEGIN:
 	// [msmith]	Added a player type so we can distinguish between bots and humans.
@@ -282,6 +283,7 @@ public:
 	// Think.
 	virtual void		PreThink();
 	virtual void		PostThink();
+		
 
 	virtual void		ItemPostFrame();
 	virtual void		Weapon_FrameUpdate( void );
@@ -1518,6 +1520,10 @@ public:
 	bool IsMaxHealthDraining( void ) { return m_nMaxHealthDrainBucket != 0.0; }
 
 private:
+	bool	m_bSlamArmed;
+	float	m_flAirborneStartTime;
+	bool	m_bWasOnGroundLastTick;
+
 	bool PickupWeaponFromOther( CTFDroppedWeapon *pDroppedWeapon );
 	bool TryToPickupDroppedWeapon();
 	float m_flSendPickupWeaponMessageTime;

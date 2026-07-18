@@ -2231,6 +2231,39 @@
 		}
 	}
 
+	"consolebutton"
+	{
+		"ControlName"	"CExImageButton"
+		"fieldName"		"Console"
+		"xpos"			"r100"
+		"ypos"			"435"
+		"zpos"			"60"
+		"wide"			"70"
+		"tall"			"30"
+		"autoResize"		"0"
+		"pinCorner"		"3"
+		"visible"		"1"
+		"enabled"		"1"
+		"tabPosition"		"0"
+		"font"			"HudFontSmallestBold"
+		"labelText"		"console"
+		"command"		"engine con_enable 1; toggleconsole"
+		"textAlignment"		"center"
+		"dulltext"		"0"
+		"brighttext"		"0"
+		"default"		"1"
+		"sound_depressed"	"UI/buttonclick.wav"
+		"sound_released"	"UI/buttonclickrelease.wav"
+
+		"border_default"	"MainMenuButtonDefault"
+		"border_armed"		"MainMenuButtonArmed"
+		"paintbackground"	"0"
+
+		"defaultFgColor_override" "46 43 42 255"
+		"armedFgColor_override" "235 226 202 255"
+		"depressedFgColor_override" "46 43 42 255"
+	}
+
 	"ReportPlayerButton"
 	{
 		"ControlName"	"EditablePanel"

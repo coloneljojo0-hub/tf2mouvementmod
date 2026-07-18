@@ -402,6 +402,9 @@ public:
 	virtual bool	AllowDamage( CBaseEntity *pVictim, const CTakeDamageInfo &info );
 
 	void			SetTeamGoalString( int iTeam, const char *pszGoal );
+	
+	void			OnBotKilled(void);
+	void			StartNextWave(void);
 //=============================================================================
 // HPE_BEGIN:
 // [msmith]	Added a HUD type separate from the game mode so we can do different
@@ -1044,7 +1047,15 @@ private:
 	
 	void PowerupTeamImbalance_PlayerChangeTeam( CTFPlayer *pTFPlayer, int nTeam );
 	void PowerupTeamImbalance_SwapPlayers( int nLosingTeam );
-	
+
+#ifdef GAME_DLL
+	int		m_iCurrentWave;
+	int		m_iBotsAliveThisWave;
+public:
+	bool	m_bWavesEnabled;
+private:
+#endif
+
 #endif // GAME_DLL
 
 	bool GetRopesHolidayLightsAllowed( void ) { return m_bRopesHolidayLightsAllowed; }
@@ -1073,6 +1084,9 @@ private:
 	int m_iPrevRoundState;	// bit string representing the state of the points at the start of the previous miniround
 	int m_iCurrentRoundState;
 	int m_iCurrentMiniRoundMask;
+	
+	
+
 
 	CHandle<CTeamRoundTimer>	m_hStopWatchTimer;
 	
@@ -1628,6 +1642,12 @@ public:
 	const char* GetNextMap();
 	const char* GetTrainingEndText();
 	int GetDesiredClass() const;
+	
+#ifdef GAME_DLL
+	void	StartNextWave(void);
+	void	OnBotKilled(void);
+	bool	m_bWavesEnabled;
+#endif
 
 	// Inputs
 	void InputForcePlayerSpawnAsClassOutput( inputdata_t &inputdata );

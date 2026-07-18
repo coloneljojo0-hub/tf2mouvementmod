@@ -321,6 +321,56 @@ void CreateBotName( int iTeam, int iClassIndex, CTFBot::DifficultyType skill, ch
 
 
 //-----------------------------------------------------------------------------------------------------
+CON_COMMAND_F(tf_bot_spawn_here, "Spawn a scout bot at your position that hunts players.", FCVAR_GAMEDLL | FCVAR_CHEAT)
+{
+	if (!UTIL_IsCommandIssuedByServerAdmin())
+		return;
+
+	CBasePlayer* pHost = UTIL_GetListenServerHost();
+	if (!pHost)
+		return;
+
+	int botCount = 1;
+	if (args.ArgC() > 1)
+	{
+		botCount = atoi(args.Arg(1));
+		if (botCount < 1)
+			botCount = 1;
+	}
+
+	Vector vecSpawnOrigin = pHost->GetAbsOrigin();
+	QAngle angSpawnAngles = pHost->GetAbsAngles();
+
+	for (int i = 0; i < botCount; i++)
+	{
+		char name[64];
+		V_snprintf(name, sizeof(name), "Scout Minion %d", i);
+
+		CTFBot* pBot = NextBotCreatePlayerBot< CTFBot >(name);
+		if (!pBot)
+			continue;
+
+		// Spawn them slightly offset so they don't all stack exactly on top of each other
+		Vector vecOffset(RandomFloat(-50, 50), RandomFloat(-50, 50), 0);
+		pBot->SetAbsOrigin(vecSpawnOrigin + vecOffset);
+		pBot->SetAbsAngles(angSpawnAngles);
+
+		// Enemy team relative to the host - adjust if your mod always wants bots on BLUE
+		int iEnemyTeam = (pHost->GetTeamNumber() == TF_TEAM_RED) ? TF_TEAM_BLUE : TF_TEAM_RED;
+		pBot->HandleCommand_JoinTeam(iEnemyTeam == TF_TEAM_RED ? "red" : "blue");
+
+		pBot->SetDifficulty(CTFBot::NORMAL);
+		pBot->HandleCommand_JoinClass("scout");
+
+		// No objectives, just hunt players
+		pBot->SetMission(CTFBot::MISSION_SEEK_AND_DESTROY);
+		pBot->SetAttribute(CTFBot::IGNORE_FLAG);
+		pBot->SetBehaviorFlag(TFBOT_IGNORE_SCENARIO_GOALS);
+	}
+
+	Msg("Spawned %d scout bot(s) at your position.\n", botCount);
+}
+
 CON_COMMAND_F( tf_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 {
 	// Listenserver host or rcon access only!

@@ -1635,6 +1635,77 @@ BEGIN_DATADESC( CTFGameRulesProxy )
 END_DATADESC()
 
 //-----------------------------------------------------------------------------
+// Purpose:wavesofjews
+//-----------------------------------------------------------------------------
+void CTFGameRules::StartNextWave(void)
+	{
+		m_iCurrentWave++;
+		int botsToSpawn = 3 + m_iCurrentWave;
+		m_iBotsAliveThisWave = botsToSpawn;
+
+		for (int i = 0; i < botsToSpawn; i++)
+		{
+			char name[64];
+			V_snprintf(name, sizeof(name), "Scout Minion %d", i);
+
+			CTFBot* pBot = NextBotCreatePlayerBot< CTFBot >(name);
+			if (!pBot)
+				continue;
+
+			pBot->ChangeTeam(TF_TEAM_BLUE, false, true);
+			pBot->SetDifficulty(CTFBot::NORMAL);
+			pBot->HandleCommand_JoinClass("scout");
+			pBot->SetMission(CTFBot::MISSION_SEEK_AND_DESTROY);
+			pBot->SetAttribute(CTFBot::IGNORE_FLAG);
+			pBot->SetBehaviorFlag(TFBOT_IGNORE_SCENARIO_GOALS);
+			pBot->ForceRespawn();
+		}
+
+		Msg("Wave %d started: %d bots.\n", m_iCurrentWave, botsToSpawn);
+	}
+
+	void CTFGameRules::OnBotKilled(void)
+	{
+		m_iBotsAliveThisWave--;
+		if (m_iBotsAliveThisWave <= 0 && m_bWavesEnabled)
+		{
+			StartNextWave();
+		}
+	}
+
+	CON_COMMAND_F(tf_wave_stop, "Kill all TFBots and stop automatic wave spawning.", FCVAR_GAMEDLL | FCVAR_CHEAT)
+	{
+		if (!UTIL_IsCommandIssuedByServerAdmin())
+			return;
+
+		TFGameRules()->m_bWavesEnabled = false;
+
+		for (int i = 1; i <= gpGlobals->maxClients; i++)
+		{
+			CBasePlayer* pPlayer = UTIL_PlayerByIndex(i);
+			if (!pPlayer)
+				continue;
+
+			CTFBot* pBot = ToTFBot(pPlayer);
+			if (pBot)
+			{
+				engine->ServerCommand(UTIL_VarArgs("kickid %d\n", pBot->GetUserID()));
+			}
+		}
+
+		Msg("All bots killed, wave spawning stopped.\n");
+	}
+
+	CON_COMMAND_F(tf_wave_start, "Manually start a new wave of bots.", FCVAR_GAMEDLL | FCVAR_CHEAT)
+	{
+		if (!UTIL_IsCommandIssuedByServerAdmin())
+			return;
+
+		TFGameRules()->m_bWavesEnabled = true;
+		TFGameRules()->StartNextWave();
+	}
+
+//-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
 CTFGameRulesProxy::CTFGameRulesProxy()
@@ -3310,6 +3381,7 @@ CTFGameRules::CTFGameRules()
 	ListenForGameEvent( "player_disconnect" );
 	ListenForGameEvent( "teamplay_setup_finished" );
 	ListenForGameEvent( "recalculate_truce" );
+	ListenForGameEvent( "player_death" );
 
 	Q_memset( m_vecPlayerPositions,0, sizeof(m_vecPlayerPositions) );
 
@@ -3355,7 +3427,11 @@ CTFGameRules::CTFGameRules()
 	m_bPowerupImbalanceMeasuresRunning = false;
 
 	m_hRequiredObserverTarget = NULL;
-	m_bStopWatchWinner.Set( false );
+	m_bStopWatchWinner.Set(false);
+
+	m_iCurrentWave = 0;
+	m_iBotsAliveThisWave = 0;
+	m_bWavesEnabled = true;
 
 #else // GAME_DLL
 
@@ -5470,6 +5546,7 @@ void CTFGameRules::SetupOnRoundRunning( void )
 	{
 		PowerupModeInitKillCountTimer();
 	}
+	StartNextWave();
 }
 
 //-----------------------------------------------------------------------------
@@ -18318,11 +18395,39 @@ void CTFGameRules::FireGameEvent( IGameEvent *event )
 			}
 		}
 	}
-	else if ( !Q_strcmp( eventName, "recalculate_truce" ) )
+
+
+	else if (!Q_strcmp(eventName, "recalculate_truce"))
 	{
 		RecalculateTruce();
 	}
+	else if (!Q_strcmp(eventName, "player_death"))
+	{
+		int victimUserID = event->GetInt("userid");
+		CBasePlayer* pVictim = UTIL_PlayerByUserId(victimUserID);
+
+		CTFBot* pBot = ToTFBot(pVictim);
+		if (pBot)
+		{
+			Vector vecOrigin = pBot->GetAbsOrigin();
+
+			CBaseEntity* pAmmo = CBaseEntity::Create("item_ammopack_small", vecOrigin, vec3_angle);
+			if (pAmmo)
+			{
+				pAmmo->Spawn();
+			}
+
+			CBaseEntity* pHealth = CBaseEntity::Create("item_healthkit_small", vecOrigin + Vector(20, 0, 0), vec3_angle);
+			if (pHealth)
+			{
+				pHealth->Spawn();
+			}
+
+			OnBotKilled();
+		}
+	}
 #else	// CLIENT_DLL
+
 	if ( !Q_strcmp( eventName, "overtime_nag" ) )
 	{
 		HandleOvertimeBegin();
@@ -18350,6 +18455,7 @@ void CTFGameRules::ClientSpawned( edict_t * pPlayer )
 void CTFGameRules::OnFileReceived( const char * fileName, unsigned int transferID )
 {
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Init ammo definitions
@@ -18524,6 +18630,8 @@ CTFGameRules::~CTFGameRules()
 		m_pkvVisionFilterShadersMapWhitelist = NULL;
 	}
 }
+
+
 
 //-----------------------------------------------------------------------------
 // Purpose: 
