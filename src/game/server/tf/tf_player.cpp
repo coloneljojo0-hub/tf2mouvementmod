@@ -2804,9 +2804,12 @@ void CTFPlayer::PostThink()
 		{
 			// --- Perform the slam ---
 			const float flSlamRadius = 300.0f;
-			const float flSlamDamage = 120.0f;
-			const float flSlamHorizontalForce = 550.0f;
-			const float flSlamUpwardForce = 450.0f;
+			const float flSlamHorizontalForce = 200.0f; // reduced — less horizontal push
+			const float flSlamUpwardForce = 650.0f;     // increased — more vertical pop
+
+			// Damage scales with how fast we were falling when we landed
+			float flFallSpeed = fabs(m_Local.m_flFallVelocity); // speed at moment of landing
+			float flSlamDamage = RemapValClamped(flFallSpeed, 200.0f, 1000.0f, 40.0f, 200.0f);
 
 			CUtlVector< CTFPlayer* > vecTargets;
 			CollectPlayers(&vecTargets, GetEnemyTeam(GetTeamNumber()), COLLECT_ONLY_LIVING_PLAYERS);
@@ -2839,7 +2842,6 @@ void CTFPlayer::PostThink()
 
 		m_bSlamArmed = false;
 	}
-
 	m_bWasOnGroundLastTick = bOnGroundNow;
 
 	UpdateHalloween();

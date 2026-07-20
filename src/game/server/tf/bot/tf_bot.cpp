@@ -371,6 +371,40 @@ CON_COMMAND_F(tf_bot_spawn_here, "Spawn a scout bot at your position that hunts 
 	Msg("Spawned %d scout bot(s) at your position.\n", botCount);
 }
 
+CON_COMMAND_F(tf_spawn_bot_debug, "Spawn a passive debug bot that ignores players and auto-respawns.", FCVAR_GAMEDLL | FCVAR_CHEAT)
+{
+	if (!UTIL_IsCommandIssuedByServerAdmin())
+		return;
+
+	CBasePlayer* pHost = UTIL_GetListenServerHost();
+	if (!pHost)
+		return;
+
+	static int s_nDebugBotCount = 0;
+
+	char name[64];
+	V_snprintf(name, sizeof(name), "Debug Bot %d", s_nDebugBotCount++);
+
+	CTFBot* pBot = NextBotCreatePlayerBot< CTFBot >(name);
+	if (!pBot)
+		return;
+
+	Vector vecSpawnOrigin = pHost->GetAbsOrigin();
+	QAngle angSpawnAngles = pHost->GetAbsAngles();
+
+	pBot->ChangeTeam(TF_TEAM_BLUE, false, true);
+	pBot->SetDifficulty(CTFBot::EASY);
+	pBot->HandleCommand_JoinClass("scout");
+
+	pBot->SetAttribute(CTFBot::IGNORE_ENEMIES);
+	pBot->SetAttribute(CTFBot::SUPPRESS_FIRE);
+
+	pBot->ForceRespawn();
+	pBot->Teleport(&vecSpawnOrigin, &angSpawnAngles, &vec3_origin);
+
+	Msg("Spawned passive debug bot: %s\n", name);
+}
+
 CON_COMMAND_F( tf_bot_add, "Add a bot.", FCVAR_GAMEDLL )
 {
 	// Listenserver host or rcon access only!
