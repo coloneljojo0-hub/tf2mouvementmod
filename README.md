@@ -10,15 +10,6 @@ and add wave-like gameplay for endless fun (and a lot of stuff)
 
 **Current Status**: VERY Early development — not ready for general use.
 
-## Features (Planned / In Progress)
-Planned : 
-- [ ] new main menu
-- [ ] custom maps
-- [ ] bunch of other stuff
-In Progress : 
-- [ ] sv_force_spy (should give you weapons but is buggy)
-- [ ] bot waves (still super bad for now)
-
 ## Legal & Credits
 
 - This project is based on **Valve's Source SDK 2013** (including TF2 code).  
