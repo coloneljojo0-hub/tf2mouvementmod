@@ -6,6 +6,9 @@
 #include "cbase.h"
 #include "in_buttons.h"
 #include "tf_weapon_grapplinghook.h"
+#ifdef CLIENT_DLL
+#include "c_tf_projectile_arrow.h"
+#endif
 
 // Client specific.
 #ifdef CLIENT_DLL
@@ -13,6 +16,7 @@
 #include "gc_clientsystem.h"
 #include "prediction.h"
 #include "soundenvelope.h"
+
 // Server specific.
 #else
 #include "tf_player.h"
@@ -200,9 +204,9 @@ poseparamtable_t *CTFGrapplingHook::GetPlayerPoseParamList( int &iPoseParamCount
 }
 
 
-ConVar tf_grapplinghook_projectile_speed( "tf_grapplinghook_projectile_speed", "1500", FCVAR_REPLICATED | FCVAR_CHEAT, "How fast does the grappliing hook projectile travel" );
+ConVar tf_grapplinghook_projectile_speed( "tf_grapplinghook_projectile_speed", "8000", FCVAR_REPLICATED | FCVAR_CHEAT, "How fast does the grappliing hook projectile travel" );
 ConVar tf_grapplinghook_max_distance( "tf_grapplinghook_max_distance", "2000", FCVAR_REPLICATED | FCVAR_CHEAT, "Valid distance for grappling hook to travel" );
-ConVar tf_grapplinghook_fire_delay( "tf_grapplinghook_fire_delay", "0.5", FCVAR_REPLICATED | FCVAR_CHEAT );
+ConVar tf_grapplinghook_fire_delay( "tf_grapplinghook_fire_delay", "1.5", FCVAR_REPLICATED | FCVAR_CHEAT );
 
 float m_flNextSupernovaDenyWarning = 0.f;
 
@@ -329,54 +333,69 @@ bool CTFGrapplingHook::CanAttack( void )
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
-void CTFGrapplingHook::PrimaryAttack( void )
+void CTFGrapplingHook::PrimaryAttack(void)
 {
-	CTFPlayer *pOwner = GetTFPlayerOwner();
+	CTFPlayer* pOwner = GetTFPlayerOwner();
 
 #ifdef GAME_DLL
 	// make sure to unlatch from the current target and remove the old projectile before we fire a new one
-	if ( m_bReleasedAfterLatched )
+	if (m_bReleasedAfterLatched)
 	{
-		RemoveHookProjectile( true );
+		RemoveHookProjectile(true);
 	}
 #endif // GAME_DLL
 
-	if ( m_hProjectile )
+	if (m_hProjectile)
 		return;
 
-	if ( m_flNextPrimaryAttack > gpGlobals->curtime )
+	if (m_flNextPrimaryAttack > gpGlobals->curtime)
 		return;
 
-	if ( pOwner && pOwner->m_Shared.IsControlStunned() )
+	if (pOwner && pOwner->m_Shared.IsControlStunned())
 		return;
 
-	Vector vecSrc;
-	QAngle angForward;
-	Vector vecOffset( 23.5f, -8.0f, -3.0f ); // copied from CTFWeaponBaseGun::FireArrow
-	GetProjectileFireSetup( pOwner, vecOffset, &vecSrc, &angForward, false );
+	// Pure hitscan: trace straight down the eye line, no muzzle offset, no convergence math.
+	Vector vecSrc = pOwner->EyePosition();
 	Vector vecForward;
-	AngleVectors( angForward, &vecForward );
+	AngleVectors(pOwner->EyeAngles(), &vecForward);
+	Vector vecEnd = vecSrc + vecForward * tf_grapplinghook_max_distance.GetFloat();
 
-	// check if aiming at skybox
 	trace_t tr;
-	UTIL_TraceLine( vecSrc, vecSrc + tf_grapplinghook_max_distance.GetFloat() * vecForward, MASK_SOLID, pOwner, COLLISION_GROUP_DEBRIS, &tr );
-	if ( !tr.DidHit() || ( tr.fraction < 1.0 && tr.surface.flags & SURF_SKY ) )
+	CTraceFilterSimple filter(pOwner, COLLISION_GROUP_NONE);
+	UTIL_TraceLine(vecSrc, vecEnd, MASK_SOLID, &filter, &tr);
+
+	if (!tr.DidHit() || (tr.fraction < 1.0 && tr.surface.flags & SURF_SKY))
 	{
 #ifdef CLIENT_DLL
-		// play fail sound on client here
-		if ( pOwner && prediction->IsFirstTimePredicted() )
+		if (pOwner && prediction->IsFirstTimePredicted())
 		{
-			pOwner->EmitSound( "Player.DenyWeaponSelection" );
+			pOwner->EmitSound("Player.DenyWeaponSelection");
 		}
 #endif // CLIENT_DLL
 		return;
 	}
 
-	BaseClass::PrimaryAttack();
+#ifdef GAME_DLL
+	// Spawn the hook already at the hit point instead of traveling there.
+	QAngle angForward;
+	VectorAngles(vecForward, angForward);
+
+	Assert(m_hProjectile == NULL);
+	CTFProjectile_GrapplingHook* pHook = static_cast<CTFProjectile_GrapplingHook*>(
+		CTFProjectile_Arrow::Create(tr.endpos, angForward, 0.f, 0.f, TF_PROJECTILE_GRAPPLINGHOOK, pOwner, pOwner));
+
+	if (pHook)
+	{
+		pHook->SetLauncher(this);
+		m_hProjectile = pHook;
+		pHook->HookTarget(tr.m_pEnt);
+	}
+
+	PlayWeaponShootSound();
+#endif // GAME_DLL
 
 	m_flNextPrimaryAttack = gpGlobals->curtime + tf_grapplinghook_fire_delay.GetFloat();
 }
-
 
 //-----------------------------------------------------------------------------
 // Purpose: 

@@ -47,7 +47,7 @@ RecvPropEHandle( RECVINFO( m_hLauncher ) ),
 
 // Server specific.
 #else
-SendPropVector( SENDINFO( m_vInitialVelocity ), 12 /*nbits*/, 0 /*flags*/, -3000 /*low value*/, 3000 /*high value*/	),
+SendPropVector( SENDINFO( m_vInitialVelocity ), 12 /*nbits*/, 0 /*flags*/, -20000 /*low value*/, 20000 /*high value*/	),
 
 SendPropExclude( "DT_BaseEntity", "m_vecOrigin" ),
 SendPropExclude( "DT_BaseEntity", "m_angRotation" ),

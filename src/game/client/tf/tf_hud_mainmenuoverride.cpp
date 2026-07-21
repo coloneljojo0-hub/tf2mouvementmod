@@ -152,6 +152,9 @@ void PromptOrFireCommand( const char* pszCommand )
 	}
 }
 
+// Forward declaration — defined in tf_hud_playmenu.cpp
+void ToggleplayMenu();
+
 //-----------------------------------------------------------------------------
 // Purpose:
 //-----------------------------------------------------------------------------
@@ -2191,6 +2194,11 @@ void CHudMainMenuOverride::OnCommand( const char *command )
 		ETFMatchGroup eMatchGroup = (ETFMatchGroup)atoi( command + 16 );
 		tf_mainmenu_match_panel_type.SetValue( eMatchGroup );
 	}
+	else if (!Q_stricmp(command, "openplaymenu"))
+	{
+		ToggleplayMenu();
+		return;
+	}
 	else
 	{
 		// Pass it on to GameUI main menu
@@ -2203,6 +2211,7 @@ void CHudMainMenuOverride::OnCommand( const char *command )
 
 	BaseClass::OnCommand( command );
 }
+
 
 void CHudMainMenuOverride::OnKeyCodePressed( KeyCode code )
 {

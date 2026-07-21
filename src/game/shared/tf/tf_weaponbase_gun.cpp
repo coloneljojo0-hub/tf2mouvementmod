@@ -518,7 +518,7 @@ CBaseEntity *CTFWeaponBaseGun::FireRocket( CTFPlayer *pPlayer, int iRocketType )
 
 	Vector vecSrc;
 	QAngle angForward;
-	Vector vecOffset( 23.5f, 12.0f, -3.0f );
+	Vector vecOffset(0.0f, 0.0f, 0.0f);
 	if ( pPlayer->GetFlags() & FL_DUCKING )
 	{
 		vecOffset.z = 8.0f;
@@ -554,7 +554,7 @@ CBaseEntity *CTFWeaponBaseGun::FireEnergyBall( CTFPlayer *pPlayer, bool bRing )
 
 	Vector vecSrc;
 	QAngle angForward;
-	Vector vecOffset( 23.5f, -8.0f, -3.0f );
+	Vector vecOffset(0.0f, 0.0f, 0.0f);
 	if ( pPlayer->GetFlags() & FL_DUCKING )
 	{
 		vecOffset.z = 8.0f;
@@ -743,7 +743,7 @@ CBaseEntity *CTFWeaponBaseGun::FireFlare( CTFPlayer *pPlayer )
 
 	Vector vecSrc;
 	QAngle angForward;
-	Vector vecOffset( 23.5f, 12.0f, -3.0f );
+	Vector vecOffset( 0.0f, 0.0f, 0.0f );
 	if ( pPlayer->GetFlags() & FL_DUCKING )
 	{
 		vecOffset.z = 8.0f;
@@ -781,7 +781,7 @@ CBaseEntity *CTFWeaponBaseGun::FireArrow( CTFPlayer *pPlayer, ProjectileType_t p
 
 	Vector vecSrc;
 	QAngle angForward;
-	Vector vecOffset( 23.5f, -8.0f, -3.0f );
+	Vector vecOffset( 0.0f, 0.0f, 0.0f );
 
 	GetProjectileFireSetup( pPlayer, vecOffset, &vecSrc, &angForward, false );
 

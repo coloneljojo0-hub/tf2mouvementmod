@@ -2025,7 +2025,7 @@
 		"tabPosition"	"0"
 		"font"			"HudFontSmallestBold"
 		"labelText"		"Play Game"
-		"command"		"OpenCreateMultiplayerGameDialog"
+		"command"		"openplaymenu"
 		"textAlignment"	"center"
 		"dulltext"		"0"
 		"brighttext"	"0"
