@@ -9389,18 +9389,21 @@ const char *CPlayerInfo::GetModelName()
 	return m_pParent->GetModelName().ToCStr(); 
 }
 
-const int CPlayerInfo::GetHealth() 
-{ 
-	Assert( m_pParent );
-	return m_pParent->GetHealth(); 
+int CPlayerInfo::GetHealth()
+{
+	if (!m_pParent)
+		return 0;
+
+	return m_pParent->GetHealth();
 }
 
-const int CPlayerInfo::GetMaxHealth() 
-{ 
-	Assert( m_pParent );
-	return m_pParent->GetMaxHealth(); 
-}
+int CPlayerInfo::GetMaxHealth() const
+{
+	if (!m_pParent)
+		return 0;
 
+	return m_pParent->GetMaxHealth();
+}
 
 
 

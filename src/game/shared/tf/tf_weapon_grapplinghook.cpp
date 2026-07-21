@@ -6,9 +6,6 @@
 #include "cbase.h"
 #include "in_buttons.h"
 #include "tf_weapon_grapplinghook.h"
-#ifdef CLIENT_DLL
-#include "c_tf_projectile_arrow.h"
-#endif
 
 // Client specific.
 #ifdef CLIENT_DLL
@@ -24,6 +21,7 @@
 #include "effect_dispatch_data.h"
 #include "tf_fx.h"
 #include "func_respawnroom.h"
+#include "tf_projectile_arrow.h"
 #endif
 
 //=============================================================================
