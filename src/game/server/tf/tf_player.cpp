@@ -319,25 +319,39 @@ static const char *s_pszTauntRPSParticleNames[] =
 
 ConVar sv_force_spy_mode("sv_force_spy_mode", "0", FCVAR_REPLICATED, "Forces all players to spawn as Spy with a locked Ambassador/Big Earner loadout.");
 
+//-----------------------------------------------------------------------------
+// Helper function to supply forced items for Spy when sv_force_spy_mode is enabled.
+//-----------------------------------------------------------------------------
 static CEconItemView* GetForcedSpyItem(int iSlot)
 {
 	static CEconItemView s_AmbassadorItem;
 	static CEconItemView s_BigEarnerItem;
+	static CEconItemView s_DeadRingerItem;
 	static bool s_bInitialized = false;
 
 	if (!s_bInitialized)
 	{
-		s_AmbassadorItem.Init(61, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false);   // The Ambassador
-		s_BigEarnerItem.Init(461, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, false);   // The Big Earner
+		// 61 = The Ambassador, 461 = The Big Earner, 59 = The Dead Ringer
+		s_AmbassadorItem.Init(61, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, true);
+		s_BigEarnerItem.Init(461, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, true);
+		s_DeadRingerItem.Init(59, AE_USE_SCRIPT_VALUE, AE_USE_SCRIPT_VALUE, true);
+
 		s_bInitialized = true;
 	}
 
-	if (iSlot == LOADOUT_POSITION_PRIMARY)
+	// Le Revolver / Ambassador est demandé sur le slot PRIMARY (0) ou SECONDARY (1)
+	if (iSlot == LOADOUT_POSITION_PRIMARY || iSlot == LOADOUT_POSITION_SECONDARY)
 		return &s_AmbassadorItem;
 
+	// Big Earner (Couteau)
 	if (iSlot == LOADOUT_POSITION_MELEE)
 		return &s_BigEarnerItem;
 
+	// Dead Ringer (Montre)
+	if (iSlot == LOADOUT_POSITION_PDA2)
+		return &s_DeadRingerItem;
+
+	// Saboteur (Sapper) et Kit de déguisement passent au comportement par défaut
 	return NULL;
 }
 
@@ -4975,6 +4989,7 @@ void CTFPlayer::ManageRegularWeapons( TFPlayerClassData_t *pData )
 	PostInventoryApplication();
 }
 
+
 //-----------------------------------------------------------------------------
 // Purpose: 
 //-----------------------------------------------------------------------------
@@ -4982,7 +4997,10 @@ CEconItemView* CTFPlayer::GetLoadoutItem(int iClass, int iSlot, bool bReportWhit
 {
 	if (sv_force_spy_mode.GetBool() && iClass == TF_CLASS_SPY)
 	{
-		return GetForcedSpyItem(iSlot);
+		CEconItemView* pForced = GetForcedSpyItem(iSlot);
+		if (pForced)
+			return pForced;
+		// Fall through: Sapper and Disguise Kit resolve normally below
 	}
 
 	if (TFGameRules()->IsInItemTestingMode())
@@ -4998,18 +5016,18 @@ CEconItemView* CTFPlayer::GetLoadoutItem(int iClass, int iSlot, bool bReportWhit
 		return pInventoryManager->GetBaseItemForClass(iClass, iSlot);
 	}
 
-	CEconItemView *pItem = m_Inventory.GetItemInLoadout( iClass, iSlot );
+	CEconItemView* pItem = m_Inventory.GetItemInLoadout(iClass, iSlot);
 
 	// Check to see if this item passes the tournament rules (in whitelist/or normal quality).
 	// If it doesn't, we fall back to the base item for the loadout slot.
-	if ( (pItem && pItem->IsValid()) && (pItem->GetItemQuality() != AE_NORMAL) && !pItem->GetStaticData()->IsAllowedInMatch() && TFGameRules()->IsInTournamentMode() )
+	if ((pItem && pItem->IsValid()) && (pItem->GetItemQuality() != AE_NORMAL) && !pItem->GetStaticData()->IsAllowedInMatch() && TFGameRules()->IsInTournamentMode())
 	{
-		if ( bReportWhitelistFails )
+		if (bReportWhitelistFails)
 		{
-			ClientPrint( this, HUD_PRINTNOTIFY, "#Item_BlacklistedInMatch", pItem->GetStaticData()->GetItemBaseName() );
+			ClientPrint(this, HUD_PRINTNOTIFY, "#Item_BlacklistedInMatch", pItem->GetStaticData()->GetItemBaseName());
 		}
 
-		pItem = TFInventoryManager()->GetBaseItemForClass( iClass, iSlot );
+		pItem = TFInventoryManager()->GetBaseItemForClass(iClass, iSlot);
 	}
 
 	return pItem;
