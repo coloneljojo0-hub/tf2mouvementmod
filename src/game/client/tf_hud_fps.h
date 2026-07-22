@@ -1,10 +1,11 @@
+#pragma once
 //========= Copyright Valve Corporation, All rights reserved. ============//
 //
-// TF Speedometer HUD Element
+// TF FPS Counter HUD Element
 //
 //=============================================================================
-#ifndef TF_HUD_SPEEDOMETER_H
-#define TF_HUD_SPEEDOMETER_H
+#ifndef TF_HUD_FPS_H
+#define TF_HUD_FPS_H
 
 #ifdef _WIN32
 #pragma once
@@ -15,12 +16,12 @@
 #include "hudelement.h"
 #include <vgui_controls/Panel.h>
 
-class CTFHudSpeedometer : public CHudElement, public vgui::Panel
+class CTFHudFPS : public CHudElement, public vgui::Panel
 {
-    DECLARE_CLASS_SIMPLE(CTFHudSpeedometer, vgui::Panel);
+    DECLARE_CLASS_SIMPLE(CTFHudFPS, vgui::Panel);
 
 public:
-    CTFHudSpeedometer(const char* pElementName);
+    CTFHudFPS(const char* pElementName);
 
     virtual void Init() OVERRIDE;
     virtual void Reset() OVERRIDE;
@@ -35,8 +36,8 @@ private:
     void UpdateFont();
 
     vgui::HFont m_hFont;
-    float m_flCurrentSpeed;
+    float m_flFramerate;
     int m_iCachedFontSize;
 };
 
-#endif // TF_HUD_SPEEDOMETER_H
+#endif // TF_HUD_FPS_H

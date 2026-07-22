@@ -62,13 +62,9 @@ CTFPlayMenu::CTFPlayMenu(vgui::Panel* parent) : BaseClass(parent, "TFPlayMenu")
 	m_pDifficultyCombo = new ComboBox(m_pDifficultyPage, "DifficultyCombo", 6, false);
 	m_pDifficultyCombo->SetPos(10, 10);
 	m_pDifficultyCombo->SetSize(320, 24);
-	m_pDifficultyCombo->AddItem("Easy", NULL);
-	m_pDifficultyCombo->AddItem("Normal", NULL);
-	m_pDifficultyCombo->AddItem("Hard", NULL);
-	m_pDifficultyCombo->AddItem("Brutal", NULL);
-	m_pDifficultyCombo->AddItem("NO HIT", NULL);
-	m_pDifficultyCombo->AddItem("Boss waves", NULL);
-	m_pDifficultyCombo->AddItem("no drops", NULL);
+	m_pDifficultyCombo->AddItem("Easy (placeholder)", NULL);
+	m_pDifficultyCombo->AddItem("Normal (placeholder)", NULL);
+	m_pDifficultyCombo->AddItem("Hard (placeholder)", NULL);
 	m_pDifficultyCombo->ActivateItem(0);
 
 	int screenWide, screenTall;

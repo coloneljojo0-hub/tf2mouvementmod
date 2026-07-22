@@ -1,4 +1,3 @@
-	#pragma once
 #pragma once
 #ifndef TF_HUD_PLAYMENU_H
 #define TF_HUD_PLAYMENU_H
