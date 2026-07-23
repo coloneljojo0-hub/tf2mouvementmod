@@ -319,7 +319,8 @@ static const char *s_pszTauntRPSParticleNames[] =
 	"rps_scissors_blue_win"
 };
 
-ConVar sv_force_spy_mode("sv_force_spy_mode", "0", FCVAR_REPLICATED, "Forces all players to spawn as Spy with a locked Ambassador/Big Earner loadout.");
+ConVar sv_force_spy_mode("sv_force_spy_mode", "1", FCVAR_REPLICATED, "Forces players to spawn as Spy with a locked Ambassador/Big Earner loadout.");
+ConVar sv_start_1v1("sv_start_1v1", "0", FCVAR_REPLICATED, "When enabled, sv_force_spy_mode applies to both teams instead of just RED.");
 
 //-----------------------------------------------------------------------------
 // Helper function to supply forced items for Spy when sv_force_spy_mode is enabled.
@@ -356,7 +357,16 @@ static CEconItemView* GetForcedSpyItem(int iSlot)
 	// Saboteur (Sapper) et Kit de déguisement passent au comportement par défaut
 	return NULL;
 }
+static bool ShouldForceSpyForPlayer(int iTeam)
+{
+	if (!sv_force_spy_mode.GetBool())
+		return false;
 
+	if (sv_start_1v1.GetBool())
+		return true; // applies to both teams
+
+	return iTeam == TF_TEAM_RED; // default: RED only
+}
 // -------------------------------------------------------------------------------- //
 // Player animation event. Sent to the client when a player fires, jumps, reloads, etc..
 // -------------------------------------------------------------------------------- //
@@ -5000,12 +5010,11 @@ void CTFPlayer::ManageRegularWeapons( TFPlayerClassData_t *pData )
 //-----------------------------------------------------------------------------
 CEconItemView* CTFPlayer::GetLoadoutItem(int iClass, int iSlot, bool bReportWhitelistFails)
 {
-	if (sv_force_spy_mode.GetBool() && iClass == TF_CLASS_SPY)
+	if (ShouldForceSpyForPlayer(GetTeamNumber()) && iClass == TF_CLASS_SPY)
 	{
 		CEconItemView* pForced = GetForcedSpyItem(iSlot);
 		if (pForced)
 			return pForced;
-		// Fall through: Sapper and Disguise Kit resolve normally below
 	}
 
 	if (TFGameRules()->IsInItemTestingMode())
@@ -6866,7 +6875,7 @@ void CTFPlayer::HandleCommand_JoinClass( const char *pClassName, bool bAllowSpaw
 		return;
 	}
 
-	if (sv_force_spy_mode.GetBool())
+	if (ShouldForceSpyForPlayer(GetTeamNumber()))
 	{
 		pClassName = "spy";
 	}

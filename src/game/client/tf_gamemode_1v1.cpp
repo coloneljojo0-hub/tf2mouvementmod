@@ -26,19 +26,44 @@ void C1v1Gamemode::StartMode(int iScoreLimit)
     sm_1v1_enabled.SetValue(1);
     sm_1v1_score_limit.SetValue(m_iScoreLimit);
 
-    // 1. Disable round timer and limits (Infinite round time)
+    // Force spy mode and enable for BOTH teams
+    ConVarRef sv_force_spy_mode("sv_force_spy_mode");
+    if (sv_force_spy_mode.IsValid())
+    {
+        sv_force_spy_mode.SetValue(1);
+    }
+
+    ConVarRef sv_start_1v1("sv_start_1v1");
+    if (sv_start_1v1.IsValid())
+    {
+        sv_start_1v1.SetValue(1); // Enable for both teams
+    }
+    
+    // 2. Disable round timer and limits (Infinite round time)
     ConVarRef mp_timelimit("mp_timelimit");
-    mp_timelimit.SetValue(0);
+    if (mp_timelimit.IsValid())
+    {
+        mp_timelimit.SetValue(0);
+    }
 
     ConVarRef mp_stalemate_enable("mp_stalemate_enable");
-    mp_stalemate_enable.SetValue(0);
+    if (mp_stalemate_enable.IsValid())
+    {
+        mp_stalemate_enable.SetValue(0);
+    }
 
-    // 2. Disable respawn delay for instant respawning
+    // 3. Disable respawn delay for instant respawning
     ConVarRef mp_respawnwavetime("mp_respawnwavetime");
-    mp_respawnwavetime.SetValue(0);
+    if (mp_respawnwavetime.IsValid())
+    {
+        mp_respawnwavetime.SetValue(0);
+    }
 
     ConVarRef mp_disable_respawn_times("mp_disable_respawn_times");
-    mp_disable_respawn_times.SetValue(1);
+    if (mp_disable_respawn_times.IsValid())
+    {
+        mp_disable_respawn_times.SetValue(1);
+    }
 
     ResetPlayerScores();
 
@@ -54,9 +79,14 @@ void C1v1Gamemode::StopMode()
     m_bIsActive = false;
     sm_1v1_enabled.SetValue(0);
 
+    ConVarRef sv_start_1v1("sv_start_1v1");
+    if (sv_start_1v1.IsValid())
+    {
+        sv_start_1v1.SetValue(0); // Reset back to RED-only
+    }
+
     UTIL_ClientPrintAll(HUD_PRINTCENTER, "1v1 MODE ENDED");
 }
-
 void C1v1Gamemode::ResetPlayerScores()
 {
     for (int i = 1; i <= gpGlobals->maxClients; i++)
@@ -84,7 +114,7 @@ void C1v1Gamemode::OnPlayerKilled(CBaseEntity* pVictim, CBaseEntity* pAttacker)
     if (pTFAttacker && pTFAttacker != pTFVictim)
     {
         // Add kill score
-        pTFAttacker->IncrementFragCount(1);
+        //pTFAttacker->IncrementFragCount(1);
         int iAttackerScore = pTFAttacker->FragCount(); // Correct method name
 
         // Fully heal killer

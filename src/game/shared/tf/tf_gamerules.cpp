@@ -918,6 +918,10 @@ ConVar tf_mvm_respec_credit_goal( "tf_mvm_respec_credit_goal", "2000", FCVAR_CHE
 ConVar tf_mvm_buybacks_method( "tf_mvm_buybacks_method", "0", FCVAR_REPLICATED | FCVAR_HIDDEN, "When set to 0, use the traditional, currency-based system.  When set to 1, use finite, charge-based system.", true, 0.0, true, 1.0 );
 ConVar tf_mvm_buybacks_per_wave( "tf_mvm_buybacks_per_wave", "3", FCVAR_REPLICATED | FCVAR_HIDDEN, "The fixed number of buybacks players can use per-wave." );
 
+ConVar tf_speed_damage_scale_enabled("tf_speed_damage_scale_enabled", "1", FCVAR_REPLICATED, "Enable damage scaling based on attacker's movement speed.");
+ConVar tf_speed_damage_scale_min_speed("tf_speed_damage_scale_min_speed", "320", FCVAR_REPLICATED, "Speed at/below which damage is normal (1.0x).");
+ConVar tf_speed_damage_scale_max_speed("tf_speed_damage_scale_max_speed", "1100", FCVAR_REPLICATED, "Speed at/above which damage reaches max multiplier.");
+ConVar tf_speed_damage_scale_max_mult("tf_speed_damage_scale_max_mult", "3", FCVAR_REPLICATED, "Damage multiplier at max speed.");
 
 #ifdef GAME_DLL
 enum { kMVM_CurrencyPackMinSize = 1, };
@@ -3431,7 +3435,7 @@ CTFGameRules::CTFGameRules()
 
 	m_iCurrentWave = 0;
 	m_iBotsAliveThisWave = 0;
-	m_bWavesEnabled = true;
+	m_bWavesEnabled = false;
 
 #else // GAME_DLL
 
@@ -5546,7 +5550,6 @@ void CTFGameRules::SetupOnRoundRunning( void )
 	{
 		PowerupModeInitKillCountTimer();
 	}
-	StartNextWave();
 }
 
 //-----------------------------------------------------------------------------
@@ -6945,7 +6948,29 @@ bool CTFGameRules::ApplyOnDamageModifyRules( CTakeDamageInfo &info, CBaseEntity 
 		}
 	}
 
-	info.SetDamage( flDamage );
+	// Scale damage based on the attacker's current movement speed.
+	if (tf_speed_damage_scale_enabled.GetBool())
+	{
+		CTFPlayer* pTFAttackerPlayer = ToTFPlayer(info.GetAttacker());
+
+		if (pTFAttackerPlayer)
+		{
+			float flAttackerSpeed = pTFAttackerPlayer->GetAbsVelocity().Length2D();
+			float flSpeedMult = RemapValClamped(
+				flAttackerSpeed,
+				tf_speed_damage_scale_min_speed.GetFloat(),
+				tf_speed_damage_scale_max_speed.GetFloat(),
+				1.0f,
+				tf_speed_damage_scale_max_mult.GetFloat());
+
+			flDamage *= flSpeedMult;
+
+			// Replaced tf_damage_debug with DevMsg:
+			//DevMsg("SPEED SCALE: Speed %.1f -> Mult %.2f -> Final Damage %.2f\n", flAttackerSpeed, flSpeedMult, flDamage);
+		}
+	}
+
+	info.SetDamage(flDamage);
 
 	// Apply on-hit attributes (after damage has been updated)
 	if ( pVictim && pAttacker && pAttacker->GetTeam() != pVictim->GetTeam() && pAttacker->IsPlayer() && pWeapon )

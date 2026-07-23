@@ -819,35 +819,8 @@ int C_BaseAnimating::VPhysicsGetObjectList( IPhysicsObject **pList, int listMax 
 //-----------------------------------------------------------------------------
 ShadowType_t C_BaseAnimating::ShadowCastType()
 {
-	CStudioHdr *pStudioHdr = GetModelPtr();
-	if ( !pStudioHdr || !pStudioHdr->SequencesAvailable() )
-		return SHADOWS_NONE;
-
-	if ( IsEffectActive(EF_NODRAW | EF_NOSHADOW) )
-		return SHADOWS_NONE;
-
-	if (pStudioHdr->GetNumSeq() == 0)
-		return SHADOWS_RENDER_TO_TEXTURE;
-		  
-	if ( !IsRagdoll() )
-	{
-		// If we have pose parameters, always update
-		if ( pStudioHdr->GetNumPoseParameters() > 0 )
-			return SHADOWS_RENDER_TO_TEXTURE_DYNAMIC;
-		
-		// If we have bone controllers, always update
-		if ( pStudioHdr->numbonecontrollers() > 0 )
-			return SHADOWS_RENDER_TO_TEXTURE_DYNAMIC;
-
-		// If we use IK, always update
-		if ( pStudioHdr->numikchains() > 0 )
-			return SHADOWS_RENDER_TO_TEXTURE_DYNAMIC;
-	}
-
-	// FIXME: Do something to check to see how many frames the current animation has
-	// If we do this, we have to be able to handle the case of changing ShadowCastTypes
-	// at the moment, they are assumed to be constant.
-	return SHADOWS_RENDER_TO_TEXTURE;
+	// arracher les ombres pour les fps 
+	return SHADOWS_NONE;
 }
 
 //-----------------------------------------------------------------------------
@@ -1950,73 +1923,33 @@ void C_BaseAnimating::ChildLayerBlend( Vector pos[], Quaternion q[], float curre
 //-----------------------------------------------------------------------------
 // Purpose: Do the default sequence blending rules as done in HL1
 //-----------------------------------------------------------------------------
-void C_BaseAnimating::StandardBlendingRules( CStudioHdr *hdr, Vector pos[], Quaternion q[], float currentTime, int boneMask )
+//-----------------------------------------------------------------------------
+// Purpose: Minimal bone setup stripped for maximum performance
+//-----------------------------------------------------------------------------
+void C_BaseAnimating::StandardBlendingRules(CStudioHdr* hdr, Vector pos[], Quaternion q[], float currentTime, int boneMask)
 {
-	VPROF( "C_BaseAnimating::StandardBlendingRules" );
-
-	float		poseparam[MAXSTUDIOPOSEPARAM];
-
-	if ( !hdr )
+	if (!hdr || !hdr->SequencesAvailable())
 		return;
 
-	if ( !hdr->SequencesAvailable() )
+	int iSequence = GetSequence();
+	if (iSequence >= hdr->GetNumSeq() || iSequence < 0)
 	{
-		return;
+		SetSequence(0);
+		iSequence = 0;
 	}
 
-	if (GetSequence() >= hdr->GetNumSeq() || GetSequence() == -1 ) 
-	{
-		SetSequence( 0 );
-	}
+	float poseparam[MAXSTUDIOPOSEPARAM];
+	GetPoseParameters(hdr, poseparam);
 
-	GetPoseParameters( hdr, poseparam );
-
-	// build root animation
 	float fCycle = GetCycle();
 
-#if 1 //_DEBUG
-	if (/* Q_stristr( hdr->pszName(), r_sequence_debug.GetString()) != NULL || */ r_sequence_debug.GetInt() == entindex())
-	{
-		DevMsgRT( "%8.4f : %30s : %5.3f : %4.2f\n", currentTime, hdr->pSeqdesc( GetSequence() ).pszLabel(), fCycle, 1.0 );
-	}
-#endif
+	// Essential pose initialization & base animation accumulation
+	IBoneSetup boneSetup(hdr, boneMask, poseparam);
+	boneSetup.InitPose(pos, q);
+	boneSetup.AccumulatePose(pos, q, iSequence, fCycle, 1.0f, currentTime, NULL);
 
-	IBoneSetup boneSetup( hdr, boneMask, poseparam );
-	boneSetup.InitPose( pos, q );
-	boneSetup.AccumulatePose( pos, q, GetSequence(), fCycle, 1.0, currentTime, m_pIk );
-
-	// debugoverlay->AddTextOverlay( GetAbsOrigin() + Vector( 0, 0, 64 ), 0, 0, "%30s %6.2f : %6.2f", hdr->pSeqdesc( GetSequence() )->pszLabel( ), fCycle, 1.0 );
-
-	MaintainSequenceTransitions( boneSetup, fCycle, pos, q );
-
-	AccumulateLayers( boneSetup, pos, q, currentTime );
-
-	CIKContext auto_ik;
-	auto_ik.Init( hdr, GetRenderAngles(), GetRenderOrigin(), currentTime, gpGlobals->framecount, boneMask );
-	boneSetup.CalcAutoplaySequences( pos, q, currentTime, &auto_ik );
-
-	if ( hdr->numbonecontrollers() )
-	{
-		float controllers[MAXSTUDIOBONECTRLS];
-		GetBoneControllers(controllers);
-		boneSetup.CalcBoneAdj( pos, q, controllers );
-	}
-
-	ChildLayerBlend( pos, q, currentTime, boneMask );
-
-	UnragdollBlend( hdr, pos, q, currentTime );
-
-#ifdef STUDIO_ENABLE_PERF_COUNTERS
-#if _DEBUG
-	if (Q_stristr( hdr->pszName(), r_sequence_debug.GetString()) != NULL)
-	{
-		DevMsgRT( "layers %4d : bones %4d : animated %4d\n", hdr->m_nPerfAnimationLayers, hdr->m_nPerfUsedBones, hdr->m_nPerfAnimatedBones );
-	}
-#endif
-#endif
-
+	//removed facial stuff
 }
-
 
 //-----------------------------------------------------------------------------
 // Purpose: Put a value into an attachment point by index
