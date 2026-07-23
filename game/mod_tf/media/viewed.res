@@ -16,4 +16,8 @@
 	{
 		"viewed"		"36"
 	}
+	"pvp_flatarena"
+	{
+		"viewed"		"2"
+	}
 }

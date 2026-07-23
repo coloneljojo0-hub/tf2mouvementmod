@@ -5,8 +5,10 @@
 // $NoKeywords: $
 //=============================================================================
 
+
 #include "cbase.h"
 #include "tf_player.h"
+#include "tf_gamemode_1v1.h"
 #include "tf_gamerules.h"
 #include "tf_gamestats.h"
 #include "KeyValues.h"
@@ -4049,8 +4051,11 @@ void CTFPlayer::Spawn()
 		SetHealth( GetMaxHealth() );
 	}
 
+
 	SetContextThink( &CTFPlayer::PostSpawnThink, gpGlobals->curtime + 0.1f, "PostSpawnThink" );
+	g_1v1Gamemode.OnPlayerSpawn(this);
 }
+
 
 //-----------------------------------------------------------------------------
 // Purpose: Removes all nemesis relationships between this player and others
@@ -12690,25 +12695,25 @@ void CTFPlayer::Event_Killed( const CTakeDamageInfo &info )
 		}
 	}
 
-	if ( TFGameRules() && TFGameRules()->IsPowerupMode() )
+	if (TFGameRules() && TFGameRules()->IsPowerupMode())
 	{
 		// Attackers who fire 100% critical shots from the imbalance event don't get their (or their medic's) kills but we do count deaths as that's mostly a measure of participation
-		CTFPlayer *pPowerupAttacker = ToTFPlayer( info_modified.GetAttacker() );
+		CTFPlayer* pPowerupAttacker = ToTFPlayer(info_modified.GetAttacker());
 		// Report Kill
-		CTF_GameStats.Event_PowerUpModeDeath( pPowerupAttacker, this );
-		if ( pPowerupAttacker && ( pPowerupAttacker != this ) && !pPowerupAttacker->m_Shared.InCond( TF_COND_RUNE_IMBALANCE ) )
+		CTF_GameStats.Event_PowerUpModeDeath(pPowerupAttacker, this);
+		if (pPowerupAttacker && (pPowerupAttacker != this) && !pPowerupAttacker->m_Shared.InCond(TF_COND_RUNE_IMBALANCE))
 		{
 			pPowerupAttacker->m_nMannpowerKills++;
 
 			// Any medics who were healing the attacker also count this as a kill
 			int nNumHealers = pPowerupAttacker->m_Shared.GetNumHealers();
-		
-			if ( nNumHealers > 0 )
+
+			if (nNumHealers > 0)
 			{
-				for ( int i = 0; i < nNumHealers; i++ )
+				for (int i = 0; i < nNumHealers; i++)
 				{
-					CTFPlayer *pMedic = ToTFPlayer( pPowerupAttacker->m_Shared.GetHealerByIndex( i ) );
-					if ( pMedic )
+					CTFPlayer* pMedic = ToTFPlayer(pPowerupAttacker->m_Shared.GetHealerByIndex(i));
+					if (pMedic)
 					{
 						pMedic->m_nMannpowerKills++;
 					}
@@ -12719,12 +12724,10 @@ void CTFPlayer::Event_Killed( const CTakeDamageInfo &info )
 		m_nMannpowerDeaths++;
 	}
 
-	// Drop your powerup rune when you die 
-	if ( m_Shared.IsCarryingRune() )
-	{
-		int iTeam = GetEnemyTeam( GetTeamNumber() ); // Dead players drop opposing team colored powerups
-		CTFRune::CreateRune( GetAbsOrigin(), m_Shared.GetCarryingRuneType(), iTeam, true, false );
-	}
+	// Hook custom 1v1 mode logic on player death
+	g_1v1Gamemode.OnPlayerKilled(this, info.GetAttacker());
+
+
 
 	// in PD, player death adds points to the flag drop
 	if ( CTFPlayerDestructionLogic::GetRobotDestructionLogic()
